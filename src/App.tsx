@@ -10,6 +10,7 @@ import { Login } from './pages/Login';
 import { OperatorCheckIn } from './pages/OperatorCheckIn';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { AdminParticipants } from './pages/AdminParticipants';
+import { AdminIdCard } from './pages/AdminIdCard';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AppContent() {
@@ -41,6 +42,8 @@ function AppContent() {
         return <AdminDashboard />;
       case 'admin-participants':
         return <AdminParticipants />;
+      case 'admin-idcard':
+        return <AdminIdCard />;
       default:
         return <AdminDashboard />;
     }

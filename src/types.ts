@@ -29,4 +29,4 @@ export interface CheckInLog {
   status: 'success' | 'already_checked_in' | 'error';
 }
 
-export type PageId = 'login' | 'operator-checkin' | 'admin-dashboard' | 'admin-participants';
+export type PageId = 'login' | 'operator-checkin' | 'admin-dashboard' | 'admin-participants' | 'admin-idcard';

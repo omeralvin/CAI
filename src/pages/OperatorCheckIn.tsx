@@ -48,10 +48,10 @@ export const OperatorCheckIn: React.FC = () => {
          p.group.toLowerCase().includes(searchQuery.toLowerCase()))
       ).slice(0, 5);
 
-  const handleManualCheckIn = (participantId: string) => {
+  const handleManualCheckIn = async (participantId: string) => {
     if (!currentUser) return;
     
-    const res = checkInParticipant(participantId, currentUser.name);
+    const res = await checkInParticipant(participantId, currentUser.name);
     
     if (res.success) {
       setFlashMessage({
@@ -110,39 +110,36 @@ export const OperatorCheckIn: React.FC = () => {
     }, 1800); // simulated scan delay
   };
 
-  const handleRfidTap = (rfidCard: string) => {
+  const handleRfidTap = async (rfidCard: string) => {
     if (!currentUser || rfidStatus === 'scanning') return;
     
     setRfidStatus('scanning');
     setFlashMessage(null);
 
+    const res = await checkInByRfid(rfidCard, currentUser.name);
+    
+    if (res.success) {
+      setRfidStatus('success');
+      setFlashMessage({
+        type: 'success',
+        text: res.message,
+        participant: res.participant
+      });
+    } else {
+      // Check if it's already checked in (warn) or not found (error)
+      const isDoubleCheckIn = participants.some(p => p.rfidCardId?.toUpperCase() === rfidCard.toUpperCase() && p.isCheckedIn);
+      setRfidStatus(isDoubleCheckIn ? 'warn' : 'error');
+      setFlashMessage({
+        type: isDoubleCheckIn ? 'warn' : 'error',
+        text: res.message,
+        participant: res.participant
+      });
+    }
+
+    // Restore rfidStatus to idle after 3 seconds
     setTimeout(() => {
-      const res = checkInByRfid(rfidCard, currentUser.name);
-      
-      if (res.success) {
-        setRfidStatus('success');
-        setFlashMessage({
-          type: 'success',
-          text: res.message,
-          participant: res.participant
-        });
-      } else {
-        // Check if it's already checked in (warn) or not found (error)
-        const isDoubleCheckIn = participants.some(p => p.rfidCardId?.toUpperCase() === rfidCard.toUpperCase() && p.isCheckedIn);
-        setRfidStatus(isDoubleCheckIn ? 'warn' : 'error');
-        setFlashMessage({
-          type: isDoubleCheckIn ? 'warn' : 'error',
-          text: res.message,
-          participant: res.participant
-        });
-      }
-
-      // Restore rfidStatus to idle after 3 seconds
-      setTimeout(() => {
-        setRfidStatus('idle');
-      }, 3000);
-
-    }, 800); // simulated quick tap processing
+      setRfidStatus('idle');
+    }, 3000);
   };
 
   const handleRfidSubmit = (e: React.FormEvent) => {

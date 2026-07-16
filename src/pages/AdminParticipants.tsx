@@ -82,7 +82,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
   });
 
   // Handle Add Participant Submit
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddError('');
 
@@ -101,7 +101,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
 
     const formattedId = newParticipant.id.trim().toUpperCase();
 
-    const success = addParticipant({
+    const success = await addParticipant({
       id: formattedId,
       name: newParticipant.name.trim(),
       gender: newParticipant.gender,
@@ -127,7 +127,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
   };
 
   // Handle Edit Participant Submit
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingParticipant) return;
 
@@ -135,7 +135,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
       return;
     }
 
-    updateParticipant({
+    await updateParticipant({
       ...editingParticipant,
       name: editingParticipant.name.trim(),
       origin: editingParticipant.origin.trim()
@@ -196,10 +196,10 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
   };
 
   // Execute Import Preview to Global Store
-  const handleExecuteImport = () => {
+  const handleExecuteImport = async () => {
     if (importPreview.length === 0) return;
 
-    const importedCount = importParticipants(importPreview);
+    const importedCount = await importParticipants(importPreview);
     const skippedCount = importPreview.length - importedCount;
 
     setImportSuccessMsg(`Berhasil mengimpor ${importedCount} peserta baru.`);
@@ -217,16 +217,16 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
   };
 
   // Manual CheckIn state toggles inside the table
-  const handleToggleCheckInManual = (p: Participant) => {
+  const handleToggleCheckInManual = async (p: Participant) => {
     if (p.isCheckedIn) {
-      updateParticipant({
+      await updateParticipant({
         ...p,
         isCheckedIn: false,
         checkInTime: null,
         scannedBy: null
       });
     } else {
-      updateParticipant({
+      await updateParticipant({
         ...p,
         isCheckedIn: true,
         checkInTime: new Date().toISOString(),
@@ -439,9 +439,9 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
 
                         {/* Delete */}
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             if (confirm(`Apakah Anda yakin ingin menghapus peserta "${p.name}"?`)) {
-                              deleteParticipant(p.id);
+                              await deleteParticipant(p.id);
                             }
                           }}
                           className="p-1.5 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg hover:bg-rose-100 transition-colors cursor-pointer"

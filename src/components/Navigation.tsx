@@ -14,7 +14,8 @@ import {
   RefreshCw,
   Sliders,
   Shield,
-  Clock
+  Clock,
+  CreditCard
 } from 'lucide-react';
 
 export const Navigation: React.FC = () => {
@@ -46,6 +47,13 @@ export const Navigation: React.FC = () => {
       icon: Users,
       roles: ['admin'],
       description: 'Manage & import CSV'
+    },
+    {
+      id: 'admin-idcard' as PageId,
+      label: 'Cetak ID Card',
+      icon: CreditCard,
+      roles: ['admin'],
+      description: 'Generate & download ID card'
     }
   ].filter(item => item.roles.includes(role));
 

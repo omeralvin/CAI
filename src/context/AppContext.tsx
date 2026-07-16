@@ -1,238 +1,261 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Participant, CheckInLog, User, PageId } from '../types';
 
 interface AppContextType {
   currentUser: User | null;
-  login: (username: string, role: 'admin' | 'operator') => boolean;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   currentPage: PageId;
   setCurrentPage: (page: PageId) => void;
   participants: Participant[];
   setParticipants: React.Dispatch<React.SetStateAction<Participant[]>>;
   checkInLogs: CheckInLog[];
-  checkInParticipant: (id: string, operatorName: string) => { success: boolean; message: string; participant?: Participant };
-  checkInByRfid: (rfidCardId: string, operatorName: string) => { success: boolean; message: string; participant?: Participant };
-  addParticipant: (participant: Omit<Participant, 'isCheckedIn'>) => boolean;
-  deleteParticipant: (id: string) => void;
-  updateParticipant: (participant: Participant) => void;
-  importParticipants: (newParticipants: Omit<Participant, 'isCheckedIn'>[]) => number;
-  resetAllAttendance: () => void;
+  checkInParticipant: (id: string, operatorName: string) => Promise<{ success: boolean; message: string; participant?: Participant }>;
+  checkInByRfid: (rfidCardId: string, operatorName: string) => Promise<{ success: boolean; message: string; participant?: Participant }>;
+  addParticipant: (participant: Omit<Participant, 'isCheckedIn'>) => Promise<boolean>;
+  deleteParticipant: (id: string) => Promise<void>;
+  updateParticipant: (participant: Participant) => Promise<void>;
+  importParticipants: (newParticipants: Omit<Participant, 'isCheckedIn'>[]) => Promise<number>;
+  resetAllAttendance: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// High-fidelity initial mock data
-const INITIAL_PARTICIPANTS: Participant[] = [
-  { id: "CAI-2026-001", name: "Achmad Fauzi", gender: "L", group: "Kelompok Semeru", origin: "Surabaya", isCheckedIn: true, checkInTime: "2026-07-15T08:15:30Z", scannedBy: "Budi (Operator)", rfidCardId: "47B2E91A" },
-  { id: "CAI-2026-002", name: "Anisa Rahmawati", gender: "P", group: "Kelompok Semeru", origin: "Sidoarjo", isCheckedIn: true, checkInTime: "2026-07-15T08:17:45Z", scannedBy: "Budi (Operator)", rfidCardId: "33A1F82B" },
-  { id: "CAI-2026-003", name: "Bagus Setiawan", gender: "L", group: "Kelompok Rinjani", origin: "Malang", isCheckedIn: false, rfidCardId: "58C3FA2C" },
-  { id: "CAI-2026-004", name: "Citra Lestari", gender: "P", group: "Kelompok Rinjani", origin: "Kediri", isCheckedIn: true, checkInTime: "2026-07-15T08:32:10Z", scannedBy: "Budi (Operator)", rfidCardId: "12D9E83F" },
-  { id: "CAI-2026-005", name: "Dedi Prasetyo", gender: "L", group: "Kelompok Merbabu", origin: "Gresik", isCheckedIn: false, rfidCardId: "69D40B3D" },
-  { id: "CAI-2026-006", name: "Eka Wahyuni", gender: "P", group: "Kelompok Merbabu", origin: "Banyuwangi", isCheckedIn: false, rfidCardId: "7AE51C4E" },
-  { id: "CAI-2026-007", name: "Fajar Nugraha", gender: "L", group: "Kelompok Bromo", origin: "Jember", isCheckedIn: true, checkInTime: "2026-07-15T08:45:00Z", scannedBy: "Budi (Operator)", rfidCardId: "91E2F38C" },
-  { id: "CAI-2026-008", name: "Gita Safitri", gender: "P", group: "Kelompok Bromo", origin: "Mojokerto", isCheckedIn: false, rfidCardId: "8BF62D5F" },
-  { id: "CAI-2026-009", name: "Hendra Wijaya", gender: "L", group: "Panitia", origin: "Surabaya", isCheckedIn: true, checkInTime: "2026-07-15T07:30:15Z", scannedBy: "System", rfidCardId: "55C2A3B4" },
-  { id: "CAI-2026-010", name: "Indah Permatasari", gender: "P", group: "Panitia", origin: "Malang", isCheckedIn: true, checkInTime: "2026-07-15T07:35:00Z", scannedBy: "System", rfidCardId: "66D3B4C5" },
-  { id: "CAI-2026-011", name: "Joko Susilo", gender: "L", group: "Tamu Undangan", origin: "Madiun", isCheckedIn: false },
-  { id: "CAI-2026-012", name: "Kartika Sari", gender: "P", group: "Tamu Undangan", origin: "Pasuruan", isCheckedIn: false },
-  { id: "CAI-2026-013", name: "Lukman Hakim", gender: "L", group: "Kelompok Semeru", origin: "Lamongan", isCheckedIn: false },
-  { id: "CAI-2026-014", name: "Megawati Putri", gender: "P", group: "Kelompok Rinjani", origin: "Tuban", isCheckedIn: false },
-  { id: "CAI-2026-015", name: "Noval Ardiansyah", gender: "L", group: "Kelompok Merbabu", origin: "Bojonegoro", isCheckedIn: false },
-];
-
-const INITIAL_LOGS: CheckInLog[] = [
-  { id: "LOG-1", participantId: "CAI-2026-009", participantName: "Hendra Wijaya", group: "Panitia", timestamp: "2026-07-15T07:30:15Z", operatorName: "System", status: "success" },
-  { id: "LOG-2", participantId: "CAI-2026-010", participantName: "Indah Permatasari", group: "Panitia", timestamp: "2026-07-15T07:35:00Z", operatorName: "System", status: "success" },
-  { id: "LOG-3", participantId: "CAI-2026-001", participantName: "Achmad Fauzi", group: "Kelompok Semeru", timestamp: "2026-07-15T08:15:30Z", operatorName: "Budi (Operator)", status: "success" },
-  { id: "LOG-4", participantId: "CAI-2026-002", participantName: "Anisa Rahmawati", group: "Kelompok Semeru", timestamp: "2026-07-15T08:17:45Z", operatorName: "Budi (Operator)", status: "success" },
-  { id: "LOG-5", participantId: "CAI-2026-004", participantName: "Citra Lestari", group: "Kelompok Rinjani", timestamp: "2026-07-15T08:32:10Z", operatorName: "Budi (Operator)", status: "success" },
-  { id: "LOG-6", participantId: "CAI-2026-007", participantName: "Fajar Nugraha", group: "Kelompok Bromo", timestamp: "2026-07-15T08:45:00Z", operatorName: "Budi (Operator)", status: "success" },
-];
+const API_BASE_URL = 'http://localhost:5050/api';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('cai_user');
-    return saved ? JSON.parse(saved) : { username: "admin", name: "Administrator CAI", role: "admin" }; // Default for easy preview, but users can change or logout
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentPage, setCurrentPage] = useState<PageId>('login');
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [checkInLogs, setCheckInLogs] = useState<CheckInLog[]>([]);
 
-  const [currentPage, setCurrentPage] = useState<PageId>(() => {
-    const saved = localStorage.getItem('cai_page');
-    // Set default based on current user role
-    if (saved) return saved as PageId;
-    return 'admin-dashboard';
-  });
+  // Helper to fetch authorization headers
+  const getHeaders = useCallback(() => {
+    const token = localStorage.getItem('cai_token');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : '',
+    };
+  }, []);
 
-  const [participants, setParticipants] = useState<Participant[]>(() => {
-    const saved = localStorage.getItem('cai_participants');
-    return saved ? JSON.parse(saved) : INITIAL_PARTICIPANTS;
-  });
+  // Fetch participants and logs from server
+  const refreshData = useCallback(async () => {
+    const token = localStorage.getItem('cai_token');
+    if (!token) return;
 
-  const [checkInLogs, setCheckInLogs] = useState<CheckInLog[]>(() => {
-    const saved = localStorage.getItem('cai_logs');
-    return saved ? JSON.parse(saved) : INITIAL_LOGS;
-  });
+    try {
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const [partsRes, logsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/participants`, { headers }),
+        fetch(`${API_BASE_URL}/checkin/logs`, { headers })
+      ]);
 
-  // Keep localStorage in sync
-  useEffect(() => {
-    localStorage.setItem('cai_user', currentUser ? JSON.stringify(currentUser) : '');
-    localStorage.setItem('cai_page', currentPage);
-  }, [currentUser, currentPage]);
-
-  useEffect(() => {
-    localStorage.setItem('cai_participants', JSON.stringify(participants));
-  }, [participants]);
-
-  useEffect(() => {
-    localStorage.setItem('cai_logs', JSON.stringify(checkInLogs));
-  }, [checkInLogs]);
-
-  const login = (username: string, role: 'admin' | 'operator'): boolean => {
-    if (!username.trim()) return false;
-    
-    const name = role === 'admin' ? "Administrator CAI" : `${username} (Operator)`;
-    const user: User = { username, name, role };
-    setCurrentUser(user);
-    
-    if (role === 'admin') {
-      setCurrentPage('admin-dashboard');
-    } else {
-      setCurrentPage('operator-checkin');
+      if (partsRes.ok) {
+        const partsData = await partsRes.json();
+        setParticipants(partsData);
+      }
+      if (logsRes.ok) {
+        const logsData = await logsRes.json();
+        setCheckInLogs(logsData);
+      }
+    } catch (error) {
+      console.error('Error refreshing backend data:', error);
     }
-    return true;
+  }, []);
+
+  // Check login session on mount
+  useEffect(() => {
+    const initializeApp = async () => {
+      const token = localStorage.getItem('cai_token');
+      if (token) {
+        try {
+          const response = await fetch(`${API_BASE_URL}/auth/me`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (response.ok) {
+            const user = await response.json();
+            setCurrentUser(user);
+            setCurrentPage(user.role === 'admin' ? 'admin-dashboard' : 'operator-checkin');
+          } else {
+            localStorage.removeItem('cai_token');
+            setCurrentUser(null);
+            setCurrentPage('login');
+          }
+        } catch (error) {
+          console.error('Auth initialization error:', error);
+          setCurrentPage('login');
+        }
+      } else {
+        setCurrentPage('login');
+      }
+    };
+
+    initializeApp();
+  }, []);
+
+  // Live polling for dashboard and logs updates
+  useEffect(() => {
+    if (!currentUser) return;
+
+    refreshData();
+    const interval = setInterval(refreshData, 5000);
+    return () => clearInterval(interval);
+  }, [currentUser, refreshData]);
+
+  const login = async (username: string, password: string): Promise<boolean> => {
+    if (!username.trim() || !password) return false;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+
+      if (!response.ok) return false;
+
+      const data = await response.json();
+      localStorage.setItem('cai_token', data.token);
+      setCurrentUser(data.user);
+      setCurrentPage(data.user.role === 'admin' ? 'admin-dashboard' : 'operator-checkin');
+      return true;
+    } catch (error) {
+      console.error('Backend login failed:', error);
+      return false;
+    }
   };
 
   const logout = () => {
+    localStorage.removeItem('cai_token');
     setCurrentUser(null);
     setCurrentPage('login');
   };
 
-  const checkInParticipant = (id: string, operatorName: string) => {
-    const trimmedId = id.trim().toUpperCase();
-    const index = participants.findIndex(p => p.id.toUpperCase() === trimmedId);
-
-    if (index === -1) {
-      return { success: false, message: `ID Peserta "${trimmedId}" tidak ditemukan!` };
-    }
-
-    const participant = participants[index];
-
-    if (participant.isCheckedIn) {
-      // Log double check-in attempt
-      const newLog: CheckInLog = {
-        id: `LOG-${Date.now()}`,
-        participantId: participant.id,
-        participantName: participant.name,
-        group: participant.group,
-        timestamp: new Date().toISOString(),
-        operatorName,
-        status: 'already_checked_in'
-      };
-      setCheckInLogs(prev => [newLog, ...prev]);
-
-      return { 
-        success: false, 
-        message: `${participant.name} sudah melakukan absensi sebelumnya!`,
-        participant 
-      };
-    }
-
-    // Perform check-in
-    const timestamp = new Date().toISOString();
-    const updatedParticipants = [...participants];
-    updatedParticipants[index] = {
-      ...participant,
-      isCheckedIn: true,
-      checkInTime: timestamp,
-      scannedBy: operatorName
-    };
-
-    setParticipants(updatedParticipants);
-
-    const newLog: CheckInLog = {
-      id: `LOG-${Date.now()}`,
-      participantId: participant.id,
-      participantName: participant.name,
-      group: participant.group,
-      timestamp,
-      operatorName,
-      status: 'success'
-    };
-
-    setCheckInLogs(prev => [newLog, ...prev]);
-
-    return { 
-      success: true, 
-      message: `Absensi Berhasil! Selamat datang ${participant.name}.`,
-      participant: updatedParticipants[index]
-    };
-  };
-
-  const checkInByRfid = (rfidCardId: string, operatorName: string) => {
-    const trimmedRfid = rfidCardId.trim().toUpperCase();
-    const index = participants.findIndex(p => p.rfidCardId?.toUpperCase() === trimmedRfid);
-
-    if (index === -1) {
-      return { success: false, message: `Kartu RFID dengan Serial "${trimmedRfid}" tidak terdaftar!` };
-    }
-
-    const participant = participants[index];
-    return checkInParticipant(participant.id, operatorName);
-  };
-
-  const addParticipant = (newP: Omit<Participant, 'isCheckedIn'>): boolean => {
-    if (participants.some(p => p.id.toUpperCase() === newP.id.toUpperCase())) {
-      return false; // ID already exists
-    }
-
-    const participant: Participant = {
-      ...newP,
-      isCheckedIn: false,
-      checkInTime: null,
-      scannedBy: null
-    };
-
-    setParticipants(prev => [...prev, participant]);
-    return true;
-  };
-
-  const deleteParticipant = (id: string) => {
-    setParticipants(prev => prev.filter(p => p.id !== id));
-    // Keep logs but they won't link to existing participant, which is fine
-  };
-
-  const updateParticipant = (updated: Participant) => {
-    setParticipants(prev => prev.map(p => p.id === updated.id ? updated : p));
-  };
-
-  const importParticipants = (newParticipants: Omit<Participant, 'isCheckedIn'>[]): number => {
-    let count = 0;
-    setParticipants(prev => {
-      const updated = [...prev];
-      newParticipants.forEach(item => {
-        // Only insert if ID doesn't already exist
-        if (!updated.some(p => p.id.toUpperCase() === item.id.toUpperCase())) {
-          updated.push({
-            ...item,
-            isCheckedIn: false,
-            checkInTime: null,
-            scannedBy: null
-          });
-          count++;
-        }
+  const checkInParticipant = async (id: string, operatorName: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/checkin`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ participantId: id }),
       });
-      return updated;
-    });
-    return count;
+
+      const data = await response.json();
+      await refreshData();
+
+      return {
+        success: data.success,
+        message: data.message,
+        participant: data.participant
+      };
+    } catch (error) {
+      console.error('Check-in failed:', error);
+      return { success: false, message: 'Gagal terhubung dengan server backend.' };
+    }
   };
 
-  const resetAllAttendance = () => {
-    setParticipants(prev => prev.map(p => ({
-      ...p,
-      isCheckedIn: false,
-      checkInTime: null,
-      scannedBy: null
-    })));
-    setCheckInLogs([]);
+  const checkInByRfid = async (rfidCardId: string, operatorName: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/checkin`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ rfidCardId }),
+      });
+
+      const data = await response.json();
+      await refreshData();
+
+      return {
+        success: data.success,
+        message: data.message,
+        participant: data.participant
+      };
+    } catch (error) {
+      console.error('RFID check-in failed:', error);
+      return { success: false, message: 'Gagal terhubung dengan server backend.' };
+    }
+  };
+
+  const addParticipant = async (newP: Omit<Participant, 'isCheckedIn'>): Promise<boolean> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/participants`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(newP),
+      });
+
+      if (!response.ok) return false;
+      await refreshData();
+      return true;
+    } catch (error) {
+      console.error('Failed adding participant:', error);
+      return false;
+    }
+  };
+
+  const deleteParticipant = async (id: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/participants/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      });
+
+      if (response.ok) {
+        await refreshData();
+      }
+    } catch (error) {
+      console.error('Failed deleting participant:', error);
+    }
+  };
+
+  const updateParticipant = async (updated: Participant) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/participants/${updated.id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(updated),
+      });
+
+      if (response.ok) {
+        await refreshData();
+      }
+    } catch (error) {
+      console.error('Failed updating participant:', error);
+    }
+  };
+
+  const importParticipants = async (newParticipants: Omit<Participant, 'isCheckedIn'>[]): Promise<number> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/participants/import`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ participants: newParticipants }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        await refreshData();
+        return data.count;
+      }
+      return 0;
+    } catch (error) {
+      console.error('Failed importing participants:', error);
+      return 0;
+    }
+  };
+
+  const resetAllAttendance = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/participants/reset`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
+
+      if (response.ok) {
+        await refreshData();
+      }
+    } catch (error) {
+      console.error('Failed resetting data:', error);
+    }
   };
 
   return (

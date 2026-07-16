@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { motion } from 'motion/react';
-import { Leaf, Shield, Clock, ArrowRight, CheckCircle2, User } from 'lucide-react';
+import { Leaf, ArrowRight, CheckCircle2, User, Lock } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const { login } = useApp();
   const [username, setUsername] = useState('');
-  const [role, setRole] = useState<'admin' | 'operator'>('admin');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -17,16 +17,15 @@ export const Login: React.FC = () => {
       setError('Nama atau Username wajib diisi!');
       return;
     }
-
-    const success = login(username.trim(), role);
-    if (!success) {
-      setError('Gagal masuk. Silakan periksa input Anda.');
+    if (!password) {
+      setError('Kata Sandi wajib diisi!');
+      return;
     }
-  };
 
-  const handleQuickLogin = (selectedRole: 'admin' | 'operator') => {
-    const defaultUser = selectedRole === 'admin' ? 'admin' : 'budi_cai';
-    login(defaultUser, selectedRole);
+    const success = await login(username.trim(), password);
+    if (!success) {
+      setError('Gagal masuk. Silakan periksa username atau password Anda.');
+    }
   };
 
   return (
@@ -92,35 +91,23 @@ export const Login: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Pilih Hak Akses (Role)
+              <label htmlFor="password" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Kata Sandi
               </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRole('admin')}
-                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border text-xs font-semibold transition-all ${
-                    role === 'admin'
-                      ? 'bg-blue-50/50 border-blue-500 text-blue-900 ring-1 ring-blue-500'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <Shield className={`h-4 w-4 ${role === 'admin' ? 'text-blue-600' : 'text-slate-400'}`} />
-                  Administrator
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setRole('operator')}
-                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border text-xs font-semibold transition-all ${
-                    role === 'operator'
-                      ? 'bg-blue-50/50 border-blue-500 text-blue-900 ring-1 ring-blue-500'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <Clock className={`h-4 w-4 ${role === 'operator' ? 'text-blue-600' : 'text-slate-400'}`} />
-                  Operator Lapangan
-                </button>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Lock className="h-4 w-4" />
+                </div>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  placeholder="Masukkan kata sandi"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="block w-full pl-10 pr-3.5 py-3 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-800"
+                />
               </div>
             </div>
 
@@ -133,40 +120,12 @@ export const Login: React.FC = () => {
               <ArrowRight className="h-4 w-4" />
             </button>
           </form>
-
-          {/* Quick simulation accounts for testing */}
-          <div className="mt-8 pt-6 border-t border-slate-100">
-            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center mb-4">
-              Uji Coba Cepat (Sandbox)
-            </h3>
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                onClick={() => handleQuickLogin('admin')}
-                className="flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 hover:border-amber-300 hover:bg-amber-50/20 text-center transition-all group"
-                id="quick-login-admin"
-              >
-                <Shield className="h-4 w-4 text-amber-500 mb-1 group-hover:scale-110 transition-transform" />
-                <span className="text-xs font-bold text-slate-800">Admin Mode</span>
-                <span className="text-[10px] text-slate-400 mt-0.5">Semua Fitur</span>
-              </button>
-
-              <button
-                onClick={() => handleQuickLogin('operator')}
-                className="flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/20 text-center transition-all group"
-                id="quick-login-operator"
-              >
-                <Clock className="h-4 w-4 text-blue-500 mb-1 group-hover:scale-110 transition-transform" />
-                <span className="text-xs font-bold text-slate-800">Operator Mode</span>
-                <span className="text-[10px] text-slate-400 mt-0.5">Real-time Scan</span>
-              </button>
-            </div>
-          </div>
         </motion.div>
 
         {/* Footer info */}
         <div className="mt-6 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
           <CheckCircle2 className="h-3.5 w-3.5 text-blue-500" />
-          <span>Sistem Berjalan di Lingkungan Frontend Demo (Mock Active)</span>
+          <span>Sistem Berjalan di Lingkungan Produksi (Terhubung Backend)</span>
         </div>
       </div>
     </div>
