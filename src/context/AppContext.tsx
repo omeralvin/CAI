@@ -11,6 +11,7 @@ interface AppContextType {
   setParticipants: React.Dispatch<React.SetStateAction<Participant[]>>;
   checkInLogs: CheckInLog[];
   checkInParticipant: (id: string, operatorName: string) => { success: boolean; message: string; participant?: Participant };
+  checkInByRfid: (rfidCardId: string, operatorName: string) => { success: boolean; message: string; participant?: Participant };
   addParticipant: (participant: Omit<Participant, 'isCheckedIn'>) => boolean;
   deleteParticipant: (id: string) => void;
   updateParticipant: (participant: Participant) => void;
@@ -22,16 +23,16 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 // High-fidelity initial mock data
 const INITIAL_PARTICIPANTS: Participant[] = [
-  { id: "CAI-2026-001", name: "Achmad Fauzi", gender: "L", group: "Kelompok Semeru", origin: "Surabaya", isCheckedIn: true, checkInTime: "2026-07-15T08:15:30Z", scannedBy: "Budi (Operator)" },
-  { id: "CAI-2026-002", name: "Anisa Rahmawati", gender: "P", group: "Kelompok Semeru", origin: "Sidoarjo", isCheckedIn: true, checkInTime: "2026-07-15T08:17:45Z", scannedBy: "Budi (Operator)" },
-  { id: "CAI-2026-003", name: "Bagus Setiawan", gender: "L", group: "Kelompok Rinjani", origin: "Malang", isCheckedIn: false },
-  { id: "CAI-2026-004", name: "Citra Lestari", gender: "P", group: "Kelompok Rinjani", origin: "Kediri", isCheckedIn: true, checkInTime: "2026-07-15T08:32:10Z", scannedBy: "Budi (Operator)" },
-  { id: "CAI-2026-005", name: "Dedi Prasetyo", gender: "L", group: "Kelompok Merbabu", origin: "Gresik", isCheckedIn: false },
-  { id: "CAI-2026-006", name: "Eka Wahyuni", gender: "P", group: "Kelompok Merbabu", origin: "Banyuwangi", isCheckedIn: false },
-  { id: "CAI-2026-007", name: "Fajar Nugraha", gender: "L", group: "Kelompok Bromo", origin: "Jember", isCheckedIn: true, checkInTime: "2026-07-15T08:45:00Z", scannedBy: "Budi (Operator)" },
-  { id: "CAI-2026-008", name: "Gita Safitri", gender: "P", group: "Kelompok Bromo", origin: "Mojokerto", isCheckedIn: false },
-  { id: "CAI-2026-009", name: "Hendra Wijaya", gender: "L", group: "Panitia", origin: "Surabaya", isCheckedIn: true, checkInTime: "2026-07-15T07:30:15Z", scannedBy: "System" },
-  { id: "CAI-2026-010", name: "Indah Permatasari", gender: "P", group: "Panitia", origin: "Malang", isCheckedIn: true, checkInTime: "2026-07-15T07:35:00Z", scannedBy: "System" },
+  { id: "CAI-2026-001", name: "Achmad Fauzi", gender: "L", group: "Kelompok Semeru", origin: "Surabaya", isCheckedIn: true, checkInTime: "2026-07-15T08:15:30Z", scannedBy: "Budi (Operator)", rfidCardId: "47B2E91A" },
+  { id: "CAI-2026-002", name: "Anisa Rahmawati", gender: "P", group: "Kelompok Semeru", origin: "Sidoarjo", isCheckedIn: true, checkInTime: "2026-07-15T08:17:45Z", scannedBy: "Budi (Operator)", rfidCardId: "33A1F82B" },
+  { id: "CAI-2026-003", name: "Bagus Setiawan", gender: "L", group: "Kelompok Rinjani", origin: "Malang", isCheckedIn: false, rfidCardId: "58C3FA2C" },
+  { id: "CAI-2026-004", name: "Citra Lestari", gender: "P", group: "Kelompok Rinjani", origin: "Kediri", isCheckedIn: true, checkInTime: "2026-07-15T08:32:10Z", scannedBy: "Budi (Operator)", rfidCardId: "12D9E83F" },
+  { id: "CAI-2026-005", name: "Dedi Prasetyo", gender: "L", group: "Kelompok Merbabu", origin: "Gresik", isCheckedIn: false, rfidCardId: "69D40B3D" },
+  { id: "CAI-2026-006", name: "Eka Wahyuni", gender: "P", group: "Kelompok Merbabu", origin: "Banyuwangi", isCheckedIn: false, rfidCardId: "7AE51C4E" },
+  { id: "CAI-2026-007", name: "Fajar Nugraha", gender: "L", group: "Kelompok Bromo", origin: "Jember", isCheckedIn: true, checkInTime: "2026-07-15T08:45:00Z", scannedBy: "Budi (Operator)", rfidCardId: "91E2F38C" },
+  { id: "CAI-2026-008", name: "Gita Safitri", gender: "P", group: "Kelompok Bromo", origin: "Mojokerto", isCheckedIn: false, rfidCardId: "8BF62D5F" },
+  { id: "CAI-2026-009", name: "Hendra Wijaya", gender: "L", group: "Panitia", origin: "Surabaya", isCheckedIn: true, checkInTime: "2026-07-15T07:30:15Z", scannedBy: "System", rfidCardId: "55C2A3B4" },
+  { id: "CAI-2026-010", name: "Indah Permatasari", gender: "P", group: "Panitia", origin: "Malang", isCheckedIn: true, checkInTime: "2026-07-15T07:35:00Z", scannedBy: "System", rfidCardId: "66D3B4C5" },
   { id: "CAI-2026-011", name: "Joko Susilo", gender: "L", group: "Tamu Undangan", origin: "Madiun", isCheckedIn: false },
   { id: "CAI-2026-012", name: "Kartika Sari", gender: "P", group: "Tamu Undangan", origin: "Pasuruan", isCheckedIn: false },
   { id: "CAI-2026-013", name: "Lukman Hakim", gender: "L", group: "Kelompok Semeru", origin: "Lamongan", isCheckedIn: false },
@@ -166,6 +167,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
+  const checkInByRfid = (rfidCardId: string, operatorName: string) => {
+    const trimmedRfid = rfidCardId.trim().toUpperCase();
+    const index = participants.findIndex(p => p.rfidCardId?.toUpperCase() === trimmedRfid);
+
+    if (index === -1) {
+      return { success: false, message: `Kartu RFID dengan Serial "${trimmedRfid}" tidak terdaftar!` };
+    }
+
+    const participant = participants[index];
+    return checkInParticipant(participant.id, operatorName);
+  };
+
   const addParticipant = (newP: Omit<Participant, 'isCheckedIn'>): boolean => {
     if (participants.some(p => p.id.toUpperCase() === newP.id.toUpperCase())) {
       return false; // ID already exists
@@ -233,6 +246,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setParticipants,
       checkInLogs,
       checkInParticipant,
+      checkInByRfid,
       addParticipant,
       deleteParticipant,
       updateParticipant,

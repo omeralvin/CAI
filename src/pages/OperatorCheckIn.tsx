@@ -14,15 +14,22 @@ import {
   UserX,
   History,
   Activity,
-  UserPlus
+  UserPlus,
+  CreditCard,
+  Radio,
+  Wifi,
+  RefreshCw
 } from 'lucide-react';
 
 export const OperatorCheckIn: React.FC = () => {
-  const { participants, checkInParticipant, currentUser, checkInLogs } = useApp();
+  const { participants, checkInParticipant, checkInByRfid, currentUser, checkInLogs } = useApp();
+  const [activeTab, setActiveTab] = useState<'qr' | 'rfid'>('qr');
   const [searchQuery, setSearchQuery] = useState('');
   const [idInput, setIdInput] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [rfidInput, setRfidInput] = useState('');
+  const [rfidStatus, setRfidStatus] = useState<'idle' | 'scanning' | 'success' | 'warn' | 'error'>('idle');
   const [flashMessage, setFlashMessage] = useState<{
     type: 'success' | 'warn' | 'error';
     text: string;
@@ -103,6 +110,74 @@ export const OperatorCheckIn: React.FC = () => {
     }, 1800); // simulated scan delay
   };
 
+  const handleRfidTap = (rfidCard: string) => {
+    if (!currentUser || rfidStatus === 'scanning') return;
+    
+    setRfidStatus('scanning');
+    setFlashMessage(null);
+
+    setTimeout(() => {
+      const res = checkInByRfid(rfidCard, currentUser.name);
+      
+      if (res.success) {
+        setRfidStatus('success');
+        setFlashMessage({
+          type: 'success',
+          text: res.message,
+          participant: res.participant
+        });
+      } else {
+        // Check if it's already checked in (warn) or not found (error)
+        const isDoubleCheckIn = participants.some(p => p.rfidCardId?.toUpperCase() === rfidCard.toUpperCase() && p.isCheckedIn);
+        setRfidStatus(isDoubleCheckIn ? 'warn' : 'error');
+        setFlashMessage({
+          type: isDoubleCheckIn ? 'warn' : 'error',
+          text: res.message,
+          participant: res.participant
+        });
+      }
+
+      // Restore rfidStatus to idle after 3 seconds
+      setTimeout(() => {
+        setRfidStatus('idle');
+      }, 3000);
+
+    }, 800); // simulated quick tap processing
+  };
+
+  const handleRfidSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rfidInput.trim()) return;
+    handleRfidTap(rfidInput.trim());
+    setRfidInput('');
+  };
+
+  const handleSimulateRandomRfid = () => {
+    // Get all participants with RFID cards
+    const rfidParticipants = participants.filter(p => p.rfidCardId);
+    if (rfidParticipants.length === 0) {
+      setFlashMessage({
+        type: 'error',
+        text: 'Tidak ada kartu RFID yang terdaftar pada peserta! Daftarkan di menu peserta dahulu.'
+      });
+      return;
+    }
+
+    // Filter those who are unchecked
+    const uncheckedRfid = rfidParticipants.filter(p => !p.isCheckedIn);
+    if (uncheckedRfid.length === 0) {
+      // Pick any to show double-checkin warning
+      const randomIndex = Math.floor(Math.random() * rfidParticipants.length);
+      const chosen = rfidParticipants[randomIndex];
+      if (chosen.rfidCardId) handleRfidTap(chosen.rfidCardId);
+      return;
+    }
+
+    const randomIndex = Math.floor(Math.random() * uncheckedRfid.length);
+    const chosen = uncheckedRfid[randomIndex];
+    if (chosen.rfidCardId) handleRfidTap(chosen.rfidCardId);
+  };
+
   // Calculate quick stats for the operator screen
   const total = participants.length;
   const checkedIn = participants.filter(p => p.isCheckedIn).length;
@@ -142,78 +217,253 @@ export const OperatorCheckIn: React.FC = () => {
         {/* Left Column: Scanner and Input (8 cols) */}
         <div className="lg:col-span-7 space-y-6">
           
-          {/* Simulation Scanner Panel */}
+          {/* Interactive Simulation Panel (QR Scanner & RFID Reader) */}
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                <Camera className="h-4 w-4 text-blue-600" />
-                Simulasi Scanner QR / Barcode
-              </h3>
-              <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                Interactive
-              </span>
+            <div className="flex border-b border-slate-100 bg-slate-50/50">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('qr');
+                  setFlashMessage(null);
+                }}
+                className={`flex-1 py-3.5 text-center text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeTab === 'qr'
+                    ? 'border-blue-600 text-blue-600 bg-white'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <QrCode className="h-4 w-4" />
+                Simulasi QR / Barcode Scanner
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('rfid');
+                  setFlashMessage(null);
+                }}
+                className={`flex-1 py-3.5 text-center text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeTab === 'rfid'
+                    ? 'border-blue-600 text-blue-600 bg-white'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <CreditCard className="h-4 w-4" />
+                Simulasi RFID Tap-In Reader
+              </button>
             </div>
 
-            <div className="p-6 flex flex-col items-center justify-center bg-slate-950 relative aspect-video sm:aspect-[21/9] lg:aspect-video rounded-b-2xl overflow-hidden">
-              {/* Camera view screen simulation */}
-              <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]" />
-              
-              {/* Scan box targeting */}
-              <div className="w-48 h-48 sm:w-56 sm:h-56 border-2 border-blue-500/50 rounded-2xl relative flex items-center justify-center bg-blue-950/10 shadow-[0_0_50px_rgba(37,99,235,0.15)] overflow-hidden">
-                {/* Hologram Corners */}
-                <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-blue-500 rounded-tl-lg" />
-                <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-blue-500 rounded-tr-lg" />
-                <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-blue-500 rounded-bl-lg" />
-                <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-blue-500 rounded-br-lg" />
+            {activeTab === 'qr' ? (
+              <div className="p-6 flex flex-col items-center justify-center bg-slate-950 relative aspect-video sm:aspect-[21/9] lg:aspect-video rounded-b-2xl overflow-hidden">
+                {/* Camera view screen simulation */}
+                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]" />
+                
+                {/* Scan box targeting */}
+                <div className="w-48 h-48 sm:w-56 sm:h-56 border-2 border-blue-500/50 rounded-2xl relative flex items-center justify-center bg-blue-950/10 shadow-[0_0_50px_rgba(37,99,235,0.15)] overflow-hidden">
+                  {/* Hologram Corners */}
+                  <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-blue-500 rounded-tl-lg" />
+                  <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-blue-500 rounded-tr-lg" />
+                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-blue-500 rounded-bl-lg" />
+                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-blue-500 rounded-br-lg" />
 
-                {/* Laser scan bar */}
-                <motion.div 
-                  animate={{
-                    top: ["4%", "96%", "4%"]
-                  }}
-                  transition={{
-                    duration: 3,
-                    repeat: Infinity,
-                    ease: "easeInOut"
-                  }}
-                  className="absolute left-[4%] right-[4%] h-0.5 bg-blue-400 shadow-[0_0_12px_rgba(96,165,250,1)] z-10"
-                />
+                  {/* Laser scan bar */}
+                  <motion.div 
+                    animate={{
+                      top: ["4%", "96%", "4%"]
+                    }}
+                    transition={{
+                      duration: 3,
+                      repeat: Infinity,
+                      ease: "easeInOut"
+                    }}
+                    className="absolute left-[4%] right-[4%] h-0.5 bg-blue-400 shadow-[0_0_12px_rgba(96,165,250,1)] z-10"
+                  />
 
-                {isScanning ? (
-                  <div className="text-center p-4 z-20">
-                    <Activity className="h-10 w-10 text-blue-400 animate-pulse mx-auto mb-2" />
-                    <span className="text-xs font-mono font-bold text-blue-400 tracking-widest uppercase block animate-bounce">
-                      Membaca QR...
-                    </span>
-                  </div>
-                ) : (
-                  <div className="text-center p-4 z-20">
-                    <QrCode className="h-12 w-12 text-slate-500 mx-auto mb-2" />
-                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block">
-                      Arahkan Kamera
-                    </span>
-                  </div>
-                )}
+                  {isScanning ? (
+                    <div className="text-center p-4 z-20">
+                      <Activity className="h-10 w-10 text-blue-400 animate-pulse mx-auto mb-2" />
+                      <span className="text-xs font-mono font-bold text-blue-400 tracking-widest uppercase block animate-bounce">
+                        Membaca QR...
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-center p-4 z-20">
+                      <QrCode className="h-12 w-12 text-slate-500 mx-auto mb-2" />
+                      <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block">
+                        Arahkan Kamera
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Control triggers */}
+                <div className="absolute bottom-4 left-4 right-4 flex justify-center z-20">
+                  <button
+                    type="button"
+                    onClick={handleSimulateScan}
+                    disabled={isScanning}
+                    className={`px-5 py-2.5 rounded-xl text-xs font-semibold shadow-md transition-all flex items-center gap-2 active:scale-95 cursor-pointer ${
+                      isScanning
+                        ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-950/20'
+                    }`}
+                    id="simulate-scan-btn"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    {isScanning ? 'Mencari QR Peserta...' : 'Simulasikan Scan QR'}
+                  </button>
+                </div>
               </div>
+            ) : (
+              /* RFID Simulator Panel */
+              <div className="p-6 bg-slate-900 flex flex-col md:flex-row gap-6 items-stretch rounded-b-2xl">
+                
+                {/* Physical Reader Device Simulation */}
+                <div className="w-full md:w-1/2 flex flex-col items-center justify-center p-5 border border-slate-800 rounded-2xl bg-slate-950 shadow-inner relative overflow-hidden">
+                  <div className="absolute top-2.5 right-2.5 flex gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-800"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-800"></span>
+                  </div>
 
-              {/* Control triggers */}
-              <div className="absolute bottom-4 left-4 right-4 flex justify-center z-20">
-                <button
-                  type="button"
-                  onClick={handleSimulateScan}
-                  disabled={isScanning}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-semibold shadow-md transition-all flex items-center gap-2 active:scale-95 ${
-                    isScanning
-                      ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-950/20'
-                  }`}
-                  id="simulate-scan-btn"
-                >
-                  <QrCode className="h-4 w-4" />
-                  {isScanning ? 'Mencari QR Peserta...' : 'Simulasikan Scan QR'}
-                </button>
+                  <span className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-3">
+                    CAI-RFID MATRIX v2.0
+                  </span>
+
+                  {/* Visual LED Status Indicator */}
+                  <div className="flex flex-col items-center gap-2 mb-5 w-full">
+                    <div className="flex items-center justify-center gap-2 bg-slate-900 px-3.5 py-1.5 rounded-full border border-slate-800/80 w-fit">
+                      <span className={`h-2.5 w-2.5 rounded-full transition-all duration-300 ${
+                        rfidStatus === 'scanning' ? 'bg-amber-500 shadow-[0_0_10px_#f59e0b] animate-pulse' :
+                        rfidStatus === 'success' ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' :
+                        rfidStatus === 'warn' ? 'bg-amber-500 shadow-[0_0_10px_#f59e0b]' :
+                        rfidStatus === 'error' ? 'bg-rose-500 shadow-[0_0_10px_#f43f5e]' :
+                        'bg-blue-500 shadow-[0_0_10px_#3b82f6]'
+                      }`} />
+                      <span className="text-[9px] font-mono font-bold tracking-wider uppercase text-slate-400">
+                        {rfidStatus === 'scanning' ? 'MEMPROSES KARTU...' :
+                         rfidStatus === 'success' ? 'AKSES DITERIMA!' :
+                         rfidStatus === 'warn' ? 'WARNING: DOUBLE!' :
+                         rfidStatus === 'error' ? 'KARTU TIDAK DIKENAL' :
+                         'SIAP • TEMPEL KARTU'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Contactless tap area */}
+                  <div className={`w-32 h-32 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                    rfidStatus === 'scanning' ? 'border-amber-500/50 bg-amber-500/5 shadow-[0_0_30px_rgba(245,158,11,0.15)] scale-105' :
+                    rfidStatus === 'success' ? 'border-emerald-500/50 bg-emerald-500/5 shadow-[0_0_30px_rgba(16,185,129,0.15)] scale-105' :
+                    rfidStatus === 'warn' ? 'border-amber-500/50 bg-amber-500/5 shadow-[0_0_30px_rgba(245,158,11,0.15)] scale-105' :
+                    rfidStatus === 'error' ? 'border-rose-500/50 bg-rose-500/5 shadow-[0_0_30px_rgba(244,63,94,0.15)] scale-105' :
+                    'border-blue-500/30 bg-blue-500/5 hover:border-blue-500/50'
+                  }`}>
+                    {rfidStatus === 'scanning' ? (
+                      <Wifi className="h-10 w-10 text-amber-500 animate-pulse" />
+                    ) : rfidStatus === 'success' ? (
+                      <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+                    ) : rfidStatus === 'error' ? (
+                      <AlertTriangle className="h-10 w-10 text-rose-500" />
+                    ) : rfidStatus === 'warn' ? (
+                      <AlertTriangle className="h-10 w-10 text-amber-500" />
+                    ) : (
+                      <Radio className="h-10 w-10 text-blue-500 animate-pulse" />
+                    )}
+                  </div>
+
+                  <p className="text-[10px] text-slate-500 mt-4 text-center font-semibold max-w-[200px]">
+                    Dekatkan kartu peserta yang terdaftar di panel kanan untuk proses absensi instan.
+                  </p>
+                </div>
+
+                {/* RFID Controls / Interactive Simulation Deck */}
+                <div className="w-full md:w-1/2 flex flex-col justify-between space-y-4">
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Simulasi Pemicu RFID Cepat
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSimulateRandomRfid}
+                        disabled={rfidStatus === 'scanning'}
+                        className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-bold rounded-xl border border-slate-700 transition-all text-center flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        Tap Kartu Acak
+                      </button>
+                      
+                      <button
+                        type="button"
+                        onClick={() => handleRfidTap('99AA88BB')}
+                        disabled={rfidStatus === 'scanning'}
+                        className="px-3 py-2 bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 text-[10px] font-bold rounded-xl border border-rose-900/50 transition-all text-center flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Tap Kartu Salah
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Manual Serial Entry */}
+                  <form onSubmit={handleRfidSubmit} className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Tempel Kartu Manual (Ketik RFID Serial)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Contoh: 58C3FA2C"
+                        value={rfidInput}
+                        onChange={(e) => setRfidInput(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 uppercase font-mono"
+                      />
+                      <button
+                        type="submit"
+                        disabled={rfidStatus === 'scanning' || !rfidInput.trim()}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        Tap
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Quick-list of registered cards to click on */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Daftar Kartu Terdaftar (Klik untuk Tap)
+                    </span>
+                    <div className="max-h-28 overflow-y-auto border border-slate-800 rounded-xl divide-y divide-slate-800/40 bg-slate-950/30">
+                      {participants.filter(p => p.rfidCardId).length === 0 ? (
+                        <div className="p-3 text-center text-[10px] text-slate-600">
+                          Tidak ada kartu terdaftar di sistem.
+                        </div>
+                      ) : (
+                        participants.filter(p => p.rfidCardId).map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => p.rfidCardId && handleRfidTap(p.rfidCardId)}
+                            disabled={rfidStatus === 'scanning'}
+                            className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800/50 flex justify-between items-center transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            <div className="min-w-0 flex-1 pr-2">
+                              <div className="text-[10px] font-bold text-slate-300 truncate">{p.name}</div>
+                              <div className="text-[8px] text-slate-500 truncate">{p.group} • {p.id}</div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="font-mono text-[8px] bg-slate-900 border border-slate-800/80 px-1 py-0.5 rounded text-blue-400 font-bold">
+                                {p.rfidCardId}
+                              </span>
+                              <span className={`h-1.5 w-1.5 rounded-full ${p.isCheckedIn ? 'bg-blue-500' : 'bg-slate-700'}`} />
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
               </div>
-            </div>
+            )}
           </div>
 
           {/* Manual Input Panel */}

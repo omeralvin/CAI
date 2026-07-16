@@ -4,6 +4,19 @@
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  /* Override Tailwind blue with #273199 scale for primary branding */
+  --color-blue-50: #f0f2ff;
+  --color-blue-100: #e0e4ff;
+  --color-blue-200: #c7cdff;
+  --color-blue-300: #9ea8ff;
+  --color-blue-400: #6a76fa;
+  --color-blue-500: #424eec;
+  --color-blue-600: #273199;
+  --color-blue-700: #1d257a;
+  --color-blue-800: #181d60;
+  --color-blue-900: #14184c;
+  --color-blue-950: #0b0d2d;
 }
 
 /* Custom smooth transitions and focus aesthetics */

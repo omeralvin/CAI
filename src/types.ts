@@ -16,6 +16,7 @@ export interface Participant {
   isCheckedIn: boolean;
   checkInTime?: string | null;
   scannedBy?: string | null;
+  rfidCardId?: string | null;
 }
 
 export interface CheckInLog {

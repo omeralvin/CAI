@@ -39,7 +39,8 @@ export const AdminParticipants: React.FC = () => {
     name: '',
     gender: 'L' as 'L' | 'P',
     group: 'Kelompok Semeru',
-    origin: ''
+    origin: '',
+    rfidCardId: ''
   });
   const [addError, setAddError] = useState('');
 
@@ -53,10 +54,10 @@ export const AdminParticipants: React.FC = () => {
   const [importSuccessMsg, setImportSuccessMsg] = useState('');
 
   // Sample CSV string for quick testing
-  const SAMPLE_CSV = `CAI-2026-101,Rizky Pratama,L,Kelompok Semeru,Surabaya
-CAI-2026-102,Dewi Lestari,P,Kelompok Bromo,Sidoarjo
-CAI-2026-103,Bambang Pamungkas,L,Kelompok Rinjani,Malang
-CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
+  const SAMPLE_CSV = `CAI-2026-101,Rizky Pratama,L,Kelompok Semeru,Surabaya,58C3FA2C
+CAI-2026-102,Dewi Lestari,P,Kelompok Bromo,Sidoarjo,8A9B10C2
+CAI-2026-103,Bambang Pamungkas,L,Kelompok Rinjani,Malang,4E5F6D7B
+CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
 
   // Get unique groups for dropdown filter
   const groupsList = Array.from(new Set(participants.map(p => p.group)));
@@ -105,7 +106,8 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
       name: newParticipant.name.trim(),
       gender: newParticipant.gender,
       group: newParticipant.group,
-      origin: newParticipant.origin.trim()
+      origin: newParticipant.origin.trim(),
+      rfidCardId: newParticipant.rfidCardId.trim() || null
     });
 
     if (success) {
@@ -116,7 +118,8 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
         name: '',
         gender: 'L',
         group: 'Kelompok Semeru',
-        origin: ''
+        origin: '',
+        rfidCardId: ''
       });
     } else {
       setAddError(`ID Peserta "${formattedId}" sudah terdaftar di sistem!`);
@@ -168,11 +171,12 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
         const genderRaw = columns[2].trim().toUpperCase();
         const group = columns[3].trim();
         const origin = columns[4].trim();
+        const rfidCardId = columns[5] ? columns[5].trim().toUpperCase() : null;
 
         const gender = (genderRaw === 'P' || genderRaw === 'PEREMPUAN') ? 'P' : 'L';
 
         if (id && name && group && origin) {
-          parsedList.push({ id, name, gender, group, origin });
+          parsedList.push({ id, name, gender, group, origin, rfidCardId });
         } else {
           lineErrors++;
         }
@@ -321,6 +325,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
                 <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">ID Peserta</th>
                 <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Nama Lengkap</th>
                 <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gender</th>
+                <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">RFID Card</th>
                 <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Kelompok</th>
                 <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Asal Daerah</th>
                 <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status Absensi</th>
@@ -331,7 +336,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
             <tbody className="bg-white divide-y divide-slate-100 text-sm">
               {filteredParticipants.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 text-xs font-medium">
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400 text-xs font-medium">
                     Tidak ada data peserta ditemukan yang sesuai dengan kriteria filter.
                   </td>
                 </tr>
@@ -357,6 +362,21 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
                       }`}>
                         {p.gender === 'L' ? 'LAKI-LAKI (L)' : 'PEREMPUAN (P)'}
                       </span>
+                    </td>
+
+                    {/* RFID Card */}
+                    <td className="px-6 py-4 whitespace-nowrap text-xs font-semibold">
+                      {p.rfidCardId ? (
+                        <span className="inline-flex items-center gap-1.5 bg-blue-50/50 text-blue-700 border border-blue-100/50 px-2.5 py-1 rounded-lg font-mono font-bold">
+                          <span className="relative flex h-1.5 w-1.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-600"></span>
+                          </span>
+                          {p.rfidCardId}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">Belum di-set</span>
+                      )}
                     </td>
 
                     {/* Group */}
@@ -549,6 +569,29 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex justify-between items-center">
+                    <span>Serial Kartu RFID (Opsional)</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const randomHex = Math.floor(Math.random() * 0xFFFFFFFF).toString(16).toUpperCase().padStart(8, '0');
+                        setNewParticipant(prev => ({ ...prev, rfidCardId: randomHex }));
+                      }}
+                      className="text-[10px] text-blue-600 hover:underline hover:text-blue-500 font-bold"
+                    >
+                      Generate Serial
+                    </button>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 58C3FA2C"
+                    value={newParticipant.rfidCardId}
+                    onChange={(e) => setNewParticipant(prev => ({ ...prev, rfidCardId: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900 uppercase font-mono"
+                  />
+                </div>
+
                 <div className="pt-4 border-t border-slate-100 flex justify-end gap-2.5">
                   <button
                     type="button"
@@ -663,6 +706,29 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex justify-between items-center">
+                    <span>Serial Kartu RFID (Opsional)</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const randomHex = Math.floor(Math.random() * 0xFFFFFFFF).toString(16).toUpperCase().padStart(8, '0');
+                        setEditingParticipant(prev => prev ? ({ ...prev, rfidCardId: randomHex }) : null);
+                      }}
+                      className="text-[10px] text-blue-600 hover:underline hover:text-blue-500 font-bold"
+                    >
+                      Generate Serial
+                    </button>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 58C3FA2C"
+                    value={editingParticipant.rfidCardId || ''}
+                    onChange={(e) => setEditingParticipant(prev => prev ? ({ ...prev, rfidCardId: e.target.value }) : null)}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900 uppercase font-mono"
+                  />
+                </div>
+
                 <div className="pt-4 border-t border-slate-100 flex justify-end gap-2.5">
                   <button
                     type="button"
@@ -724,9 +790,9 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
                     Panduan Format Impor Teks Comma-Separated (CSV)
                   </p>
                   <p className="leading-relaxed mb-3 text-slate-600 font-medium">
-                    Tempel data baris baru dengan struktur kolom dipisahkan koma berikut:<br />
+                    Tempel data baris baru dengan struktur kolom dipisahkan koma berikut (kolom ke-6 RFID opsional):<br />
                     <code className="font-bold font-mono bg-blue-100/75 px-1 py-0.5 rounded text-blue-950">
-                      ID_PESERTA,NAMA_LENGKAP,GENDER(L/P),KELOMPOK,KOTA_ASAL
+                      ID_PESERTA,NAMA_LENGKAP,GENDER(L/P),KELOMPOK,KOTA_ASAL,RFID_CARD(Opsional)
                     </code>
                   </p>
 
@@ -759,7 +825,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tempel Data CSV</label>
                   <textarea
                     rows={5}
-                    placeholder="Contoh: CAI-2026-101,Rizky Pratama,L,Kelompok Semeru,Surabaya"
+                    placeholder="Contoh: CAI-2026-101,Rizky Pratama,L,Kelompok Semeru,Surabaya,58C3FA2C"
                     value={importText}
                     onChange={(e) => setImportText(e.target.value)}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs font-mono placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-slate-50 text-slate-900"
@@ -801,6 +867,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
                             <th className="p-2">ID</th>
                             <th className="p-2">Nama</th>
                             <th className="p-2">Gender</th>
+                            <th className="p-2">RFID Card</th>
                             <th className="p-2">Kelompok</th>
                             <th className="p-2">Asal</th>
                           </tr>
@@ -811,6 +878,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik`;
                               <td className="p-2 font-mono font-bold text-slate-800">{item.id}</td>
                               <td className="p-2 font-bold text-slate-900">{item.name}</td>
                               <td className="p-2">{item.gender}</td>
+                              <td className="p-2 font-mono text-blue-700 font-bold">{item.rfidCardId || '-'}</td>
                               <td className="p-2">{item.group}</td>
                               <td className="p-2">{item.origin}</td>
                             </tr>
