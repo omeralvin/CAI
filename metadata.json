@@ -1,0 +1,6 @@
+{
+  "name": "Absensi CAI",
+  "description": "Sistem Absensi Cinta Alam Indonesia (CAI) dengan Dashboard Analytics Admin, Manajemen Peserta, dan Real-Time Check-In Operator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
