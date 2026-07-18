@@ -230,7 +230,7 @@ export const OperatorCheckIn: React.FC = () => {
                 }`}
               >
                 <QrCode className="h-4 w-4" />
-                Simulasi QR / Barcode Scanner
+                QR / Barcode Scanner
               </button>
               <button
                 type="button"
@@ -245,7 +245,7 @@ export const OperatorCheckIn: React.FC = () => {
                 }`}
               >
                 <CreditCard className="h-4 w-4" />
-                Simulasi RFID Tap-In Reader
+                RFID Tap-In Reader
               </button>
             </div>
 
@@ -293,7 +293,7 @@ export const OperatorCheckIn: React.FC = () => {
                 </div>
 
                 {/* Control triggers */}
-                <div className="absolute bottom-4 left-4 right-4 flex justify-center z-20">
+                {/* <div className="absolute bottom-4 left-4 right-4 flex justify-center z-20">
                   <button
                     type="button"
                     onClick={handleSimulateScan}
@@ -308,7 +308,7 @@ export const OperatorCheckIn: React.FC = () => {
                     <QrCode className="h-4 w-4" />
                     {isScanning ? 'Mencari QR Peserta...' : 'Simulasikan Scan QR'}
                   </button>
-                </div>
+                </div> */}
               </div>
             ) : (
               /* RFID Simulator Panel */
@@ -373,9 +373,9 @@ export const OperatorCheckIn: React.FC = () => {
 
                 {/* RFID Controls / Interactive Simulation Deck */}
                 <div className="w-full md:w-1/2 flex flex-col justify-between space-y-4">
-                  <div className="space-y-1.5">
+                  {/* <div className="space-y-1.5">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Simulasi Pemicu RFID Cepat
+                      Pemicu RFID Cepat
                     </span>
                     <div className="grid grid-cols-2 gap-2">
                       <button
@@ -398,7 +398,7 @@ export const OperatorCheckIn: React.FC = () => {
                         Tap Kartu Salah
                       </button>
                     </div>
-                  </div>
+                  </div> */}
 
                   {/* Manual Serial Entry */}
                   <form onSubmit={handleRfidSubmit} className="space-y-1">
@@ -424,7 +424,7 @@ export const OperatorCheckIn: React.FC = () => {
                   </form>
 
                   {/* Quick-list of registered cards to click on */}
-                  <div className="space-y-1">
+                  {/* <div className="space-y-1">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                       Daftar Kartu Terdaftar (Klik untuk Tap)
                     </span>
@@ -456,7 +456,7 @@ export const OperatorCheckIn: React.FC = () => {
                         ))
                       )}
                     </div>
-                  </div>
+                  </div> */}
                 </div>
 
               </div>
