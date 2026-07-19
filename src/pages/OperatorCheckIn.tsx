@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Participant, CheckInLog } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -6,20 +6,19 @@ import {
   QrCode, 
   Search, 
   UserCheck, 
-  Clock, 
   AlertTriangle, 
   CheckCircle, 
   CheckCircle2, 
-  Camera, 
   UserX,
   History,
   Activity,
   UserPlus,
   CreditCard,
   Radio,
-  Wifi,
-  RefreshCw
+  Wifi
 } from 'lucide-react';
+
+
 
 export const OperatorCheckIn: React.FC = () => {
   const { participants, checkInParticipant, checkInByRfid, currentUser, checkInLogs } = useApp();
@@ -37,6 +36,27 @@ export const OperatorCheckIn: React.FC = () => {
   } | null>(null);
 
   const scannerRef = useRef<HTMLDivElement>(null);
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus hidden RFID input when RFID tab is active
+  const focusRfidInput = useCallback(() => {
+    if (activeTab === 'rfid' && hiddenInputRef.current && document.activeElement !== hiddenInputRef.current) {
+      hiddenInputRef.current.focus();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'rfid') return;
+
+    focusRfidInput();
+
+    const handleGlobalClick = () => {
+      setTimeout(focusRfidInput, 100);
+    };
+
+    document.addEventListener('click', handleGlobalClick);
+    return () => document.removeEventListener('click', handleGlobalClick);
+  }, [activeTab, focusRfidInput]);
 
   // Filter participants for manual autocomplete search (only show unchecked ones)
   const filteredParticipants = searchQuery.trim() === ''
@@ -147,32 +167,6 @@ export const OperatorCheckIn: React.FC = () => {
     if (!rfidInput.trim()) return;
     handleRfidTap(rfidInput.trim());
     setRfidInput('');
-  };
-
-  const handleSimulateRandomRfid = () => {
-    // Get all participants with RFID cards
-    const rfidParticipants = participants.filter(p => p.rfidCardId);
-    if (rfidParticipants.length === 0) {
-      setFlashMessage({
-        type: 'error',
-        text: 'Tidak ada kartu RFID yang terdaftar pada peserta! Daftarkan di menu peserta dahulu.'
-      });
-      return;
-    }
-
-    // Filter those who are unchecked
-    const uncheckedRfid = rfidParticipants.filter(p => !p.isCheckedIn);
-    if (uncheckedRfid.length === 0) {
-      // Pick any to show double-checkin warning
-      const randomIndex = Math.floor(Math.random() * rfidParticipants.length);
-      const chosen = rfidParticipants[randomIndex];
-      if (chosen.rfidCardId) handleRfidTap(chosen.rfidCardId);
-      return;
-    }
-
-    const randomIndex = Math.floor(Math.random() * uncheckedRfid.length);
-    const chosen = uncheckedRfid[randomIndex];
-    if (chosen.rfidCardId) handleRfidTap(chosen.rfidCardId);
   };
 
   // Calculate quick stats for the operator screen
@@ -373,37 +367,24 @@ export const OperatorCheckIn: React.FC = () => {
 
                 {/* RFID Controls / Interactive Simulation Deck */}
                 <div className="w-full md:w-1/2 flex flex-col justify-between space-y-4">
-                  {/* <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Pemicu RFID Cepat
-                    </span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSimulateRandomRfid}
-                        disabled={rfidStatus === 'scanning'}
-                        className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-bold rounded-xl border border-slate-700 transition-all text-center flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
-                      >
-                        <RefreshCw className="h-3 w-3" />
-                        Tap Kartu Acak
-                      </button>
-                      
-                      <button
-                        type="button"
-                        onClick={() => handleRfidTap('99AA88BB')}
-                        disabled={rfidStatus === 'scanning'}
-                        className="px-3 py-2 bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 text-[10px] font-bold rounded-xl border border-rose-900/50 transition-all text-center flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
-                      >
-                        <AlertTriangle className="h-3 w-3" />
-                        Tap Kartu Salah
-                      </button>
-                    </div>
-                  </div> */}
 
-                  {/* Manual Serial Entry */}
+                  {/* Hidden form for hardware RFID Keyboard Emulator */}
+                  <form onSubmit={handleRfidSubmit} className="opacity-0 absolute w-0 h-0 pointer-events-none overflow-hidden">
+                    <input
+                      ref={hiddenInputRef}
+                      type="text"
+                      autoFocus
+                      value={rfidInput}
+                      onChange={(e) => setRfidInput(e.target.value)}
+                      aria-hidden="true"
+                      tabIndex={-1}
+                    />
+                  </form>
+
+                  {/* Emergency Manual Serial Entry */}
                   <form onSubmit={handleRfidSubmit} className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Tempel Kartu Manual (Ketik RFID Serial)
+                      Input Manual Darurat (jika alat bermasalah)
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -422,41 +403,6 @@ export const OperatorCheckIn: React.FC = () => {
                       </button>
                     </div>
                   </form>
-
-                  {/* Quick-list of registered cards to click on */}
-                  {/* <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Daftar Kartu Terdaftar (Klik untuk Tap)
-                    </span>
-                    <div className="max-h-28 overflow-y-auto border border-slate-800 rounded-xl divide-y divide-slate-800/40 bg-slate-950/30">
-                      {participants.filter(p => p.rfidCardId).length === 0 ? (
-                        <div className="p-3 text-center text-[10px] text-slate-600">
-                          Tidak ada kartu terdaftar di sistem.
-                        </div>
-                      ) : (
-                        participants.filter(p => p.rfidCardId).map(p => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => p.rfidCardId && handleRfidTap(p.rfidCardId)}
-                            disabled={rfidStatus === 'scanning'}
-                            className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800/50 flex justify-between items-center transition-colors cursor-pointer disabled:opacity-50"
-                          >
-                            <div className="min-w-0 flex-1 pr-2">
-                              <div className="text-[10px] font-bold text-slate-300 truncate">{p.name}</div>
-                              <div className="text-[8px] text-slate-500 truncate">{p.group} • {p.id}</div>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="font-mono text-[8px] bg-slate-900 border border-slate-800/80 px-1 py-0.5 rounded text-blue-400 font-bold">
-                                {p.rfidCardId}
-                              </span>
-                              <span className={`h-1.5 w-1.5 rounded-full ${p.isCheckedIn ? 'bg-blue-500' : 'bg-slate-700'}`} />
-                            </div>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div> */}
                 </div>
 
               </div>
