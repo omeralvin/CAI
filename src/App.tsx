@@ -73,7 +73,7 @@ function AppContent() {
         
         {/* Humble, Professional Footer */}
         <footer className="py-6 px-8 border-t border-slate-200/50 bg-white/50 text-center text-[10px] font-mono text-slate-400">
-          <span>Absensi CAI © 2026 • Dirancang untuk Kerapihan & Presisi Presensi Lapangan</span>
+          <span>Administrasi CAI © 2026 • Dirancang untuk Kerapihan & Presisi Presensi Lapangan</span>
         </footer>
       </main>
     </div>

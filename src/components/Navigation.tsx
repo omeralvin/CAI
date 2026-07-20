@@ -9,7 +9,6 @@ import {
   LogOut, 
   Menu, 
   X, 
-  Leaf, 
   User as UserIcon,
   RefreshCw,
   Sliders,
@@ -17,6 +16,7 @@ import {
   Clock,
   CreditCard
 } from 'lucide-react';
+import logoImg from '../../assets/image/logo_cai_putih.png';
 
 export const Navigation: React.FC = () => {
   const { currentUser, currentPage, setCurrentPage, logout, resetAllAttendance } = useApp();
@@ -67,11 +67,9 @@ export const Navigation: React.FC = () => {
       {/* Mobile Top Navbar */}
       <header className="lg:hidden h-16 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-blue-600 rounded-lg text-white shadow-md shadow-blue-500/20">
-            <Leaf className="h-5 w-5 fill-blue-400/20" />
-          </div>
+          <img src={logoImg} alt="Logo CAI" className="h-8 w-auto" />
           <div>
-            <h1 className="text-sm font-bold text-white tracking-tight leading-none">Absensi CAI</h1>
+            <h1 className="text-sm font-bold text-white tracking-tight leading-none">Administrasi CAI</h1>
             <span className="text-[9px] font-mono text-blue-400 font-medium tracking-wide uppercase">Cinta Alam Indonesia</span>
           </div>
         </div>
@@ -92,11 +90,9 @@ export const Navigation: React.FC = () => {
       <aside className="hidden lg:flex flex-col w-72 bg-slate-950 border-r border-slate-900 fixed top-0 bottom-0 left-0 z-30 h-full">
         {/* Brand Header */}
         <div className="h-20 border-b border-slate-900 px-6 flex items-center gap-3 bg-slate-950">
-          <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-500/30">
-            <Leaf className="h-5 w-5 fill-blue-400/20" />
-          </div>
+          <img src={logoImg} alt="Logo CAI" className="h-10 w-auto" />
           <div>
-            <h1 className="text-base font-bold text-white tracking-tight leading-none">Absensi CAI</h1>
+            <h1 className="text-base font-bold text-white tracking-tight leading-none">Administrasi CAI</h1>
             <span className="text-[10px] font-mono text-blue-400 font-semibold tracking-wider uppercase">Cinta Alam Indonesia</span>
           </div>
         </div>
@@ -221,9 +217,9 @@ export const Navigation: React.FC = () => {
             >
               <div className="h-16 border-b border-slate-900 px-4 flex items-center justify-between bg-slate-950">
                 <div className="flex items-center gap-2">
-                  <Leaf className="h-5 w-5 text-blue-500 fill-blue-500/20" />
+                  <img src={logoImg} alt="Logo CAI" className="h-8 w-auto" />
                   <div>
-                    <h1 className="text-sm font-bold text-white leading-none">Absensi CAI</h1>
+                    <h1 className="text-sm font-bold text-white leading-none">Administrasi CAI</h1>
                     <span className="text-[9px] font-mono text-blue-400 uppercase tracking-wide">Cinta Alam Indonesia</span>
                   </div>
                 </div>

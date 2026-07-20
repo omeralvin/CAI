@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { motion } from 'motion/react';
-import { Leaf, ArrowRight, CheckCircle2, User, Lock } from 'lucide-react';
+import { ArrowRight, CheckCircle2, User, Lock } from 'lucide-react';
+import logoImg from '../../assets/image/logo_warna.png';
 
 export const Login: React.FC = () => {
   const { login } = useApp();
@@ -36,18 +37,18 @@ export const Login: React.FC = () => {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <div className="flex justify-center">
-          <motion.div 
+          {/* <motion.div 
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", duration: 0.8 }}
-            className="p-3.5 bg-blue-600 rounded-2xl text-white shadow-xl shadow-blue-600/10 border border-blue-500/20"
-          >
-            <Leaf className="h-10 w-10 fill-blue-500/20" />
-          </motion.div>
+            className="p-3.5 bg-blue-600 rounded-2xl shadow-xl shadow-blue-600/10 border border-blue-500/20"
+          > */}
+            <img src={logoImg} alt="Logo CAI" className="h-32 w-auto" />
+          {/* </motion.div> */}
         </div>
         
         <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 tracking-tight">
-          Absensi CAI 2026
+          Administrasi CAI 2026
         </h2>
         <p className="mt-2 text-center text-sm text-slate-500 max-w">
           Cinta Alam Indonesia • Sistem Informasi Presensi Peserta
@@ -71,7 +72,7 @@ export const Login: React.FC = () => {
 
             <div>
               <label htmlFor="username" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Nama Pengguna / Operator ID
+                Nama
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -82,7 +83,7 @@ export const Login: React.FC = () => {
                   name="username"
                   type="text"
                   required
-                  placeholder="Masukkan nama atau username"
+                  placeholder="Masukkan nama"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="block w-full pl-10 pr-3.5 py-3 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-800"
@@ -116,7 +117,7 @@ export const Login: React.FC = () => {
               className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg shadow-blue-500/15 transition-all duration-150 active:scale-95"
               id="login-submit-btn"
             >
-              Masuk Aplikasi
+              Masuk
               <ArrowRight className="h-4 w-4" />
             </button>
           </form>

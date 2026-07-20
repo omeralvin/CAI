@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Participant, CheckInLog, User, PageId } from '../types';
+import { Participant, CheckInLog, User, PageId, AttendanceSession, DashboardData } from '../types';
 
 interface AppContextType {
   currentUser: User | null;
@@ -10,6 +10,11 @@ interface AppContextType {
   participants: Participant[];
   setParticipants: React.Dispatch<React.SetStateAction<Participant[]>>;
   checkInLogs: CheckInLog[];
+  sessions: AttendanceSession[];
+  fetchSessions: () => Promise<void>;
+  upsertSession: (session: Omit<AttendanceSession, 'id'> & { id?: string }) => Promise<boolean>;
+  fetchDashboard: (sessionId?: string) => Promise<DashboardData | null>;
+  exportPdfUrl: (sessionId?: string) => string;
   checkInParticipant: (id: string, operatorName: string) => Promise<{ success: boolean; message: string; participant?: Participant }>;
   checkInByRfid: (rfidCardId: string, operatorName: string) => Promise<{ success: boolean; message: string; participant?: Participant }>;
   addParticipant: (participant: Omit<Participant, 'isCheckedIn'>) => Promise<boolean>;
@@ -28,6 +33,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentPage, setCurrentPage] = useState<PageId>('login');
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [checkInLogs, setCheckInLogs] = useState<CheckInLog[]>([]);
+  const [sessions, setSessions] = useState<AttendanceSession[]>([]);
 
   // Helper to fetch authorization headers
   const getHeaders = useCallback(() => {
@@ -38,16 +44,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Fetch participants and logs from server
+  // Fetch participants, logs, and sessions from server
   const refreshData = useCallback(async () => {
     const token = localStorage.getItem('cai_token');
     if (!token) return;
 
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
-      const [partsRes, logsRes] = await Promise.all([
+      const [partsRes, logsRes, sessRes] = await Promise.all([
         fetch(`${API_BASE_URL}/participants`, { headers }),
-        fetch(`${API_BASE_URL}/checkin/logs`, { headers })
+        fetch(`${API_BASE_URL}/checkin/logs`, { headers }),
+        fetch(`${API_BASE_URL}/sessions`, { headers })
       ]);
 
       if (partsRes.ok) {
@@ -57,6 +64,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (logsRes.ok) {
         const logsData = await logsRes.json();
         setCheckInLogs(logsData);
+      }
+      if (sessRes.ok) {
+        const sessData = await sessRes.json();
+        setSessions(sessData);
       }
     } catch (error) {
       console.error('Error refreshing backend data:', error);
@@ -258,6 +269,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const fetchSessions = useCallback(async () => {
+    const token = localStorage.getItem('cai_token');
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/sessions`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSessions(data);
+      }
+    } catch (error) {
+      console.error('Failed fetching sessions:', error);
+    }
+  }, []);
+
+  const upsertSession = async (session: Omit<AttendanceSession, 'id'> & { id?: string }): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sessions`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(session),
+      });
+      if (res.ok) {
+        await fetchSessions();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed upserting session:', error);
+      return false;
+    }
+  };
+
+  const fetchDashboard = useCallback(async (sessionId?: string): Promise<DashboardData | null> => {
+    const token = localStorage.getItem('cai_token');
+    if (!token) return null;
+    try {
+      const url = sessionId
+        ? `${API_BASE_URL}/analytics/dashboard?sessionId=${sessionId}`
+        : `${API_BASE_URL}/analytics/dashboard`;
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed fetching dashboard:', error);
+      return null;
+    }
+  }, []);
+
+  const exportPdfUrl = (sessionId?: string): string => {
+    const token = localStorage.getItem('cai_token') || '';
+    const base = `${API_BASE_URL}/analytics/export-pdf`;
+    const sep = sessionId ? `?sessionId=${sessionId}` : '';
+    // Note: browser will navigate to this URL with auth headers via fetch in the dashboard component
+    return `${base}${sep}`;
+  };
+
   return (
     <AppContext.Provider value={{
       currentUser,
@@ -268,6 +341,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       participants,
       setParticipants,
       checkInLogs,
+      sessions,
+      fetchSessions,
+      upsertSession,
+      fetchDashboard,
+      exportPdfUrl,
       checkInParticipant,
       checkInByRfid,
       addParticipant,

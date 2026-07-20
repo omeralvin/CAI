@@ -22,7 +22,7 @@ import {
 
 export const OperatorCheckIn: React.FC = () => {
   const { participants, checkInParticipant, checkInByRfid, currentUser, checkInLogs } = useApp();
-  const [activeTab, setActiveTab] = useState<'qr' | 'rfid'>('qr');
+  const [activeTab, setActiveTab] = useState<'qr' | 'rfid'>('rfid');
   const [searchQuery, setSearchQuery] = useState('');
   const [idInput, setIdInput] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -208,9 +208,24 @@ export const OperatorCheckIn: React.FC = () => {
         {/* Left Column: Scanner and Input (8 cols) */}
         <div className="lg:col-span-7 space-y-6">
           
-          {/* Interactive Simulation Panel (QR Scanner & RFID Reader) */}
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
             <div className="flex border-b border-slate-100 bg-slate-50/50">
+            <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('rfid');
+                  setFlashMessage(null);
+                }}
+                className={`flex-1 py-3.5 text-center text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeTab === 'rfid'
+                    ? 'border-blue-600 text-blue-600 bg-white'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <CreditCard className="h-4 w-4" />
+                RFID Tap-In Reader
+              </button>
+              {/* Interactive Simulation Panel (QR Scanner & RFID Reader) */}
               <button
                 type="button"
                 onClick={() => {
@@ -226,21 +241,7 @@ export const OperatorCheckIn: React.FC = () => {
                 <QrCode className="h-4 w-4" />
                 QR / Barcode Scanner
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('rfid');
-                  setFlashMessage(null);
-                }}
-                className={`flex-1 py-3.5 text-center text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'rfid'
-                    ? 'border-blue-600 text-blue-600 bg-white'
-                    : 'border-transparent text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                <CreditCard className="h-4 w-4" />
-                RFID Tap-In Reader
-              </button>
+              
             </div>
 
             {activeTab === 'qr' ? (
