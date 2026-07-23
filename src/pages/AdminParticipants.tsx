@@ -1,91 +1,158 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { Participant } from '../types';
+import { Participant, CheckInLog } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Users, 
-  Search, 
-  Plus, 
-  Trash2, 
-  Upload, 
-  Download, 
-  Filter, 
-  Check, 
-  X, 
-  XCircle, 
-  CheckCircle, 
+import {
+  Users,
+  Search,
+  Plus,
+  Trash2,
+  Upload,
+  Download,
+  Filter,
+  Check,
+  X,
+  XCircle,
+  CheckCircle,
   UserPlus,
   HelpCircle,
   Copy,
-  Edit2
+  Edit2,
+  ChevronDown,
+  CreditCard,
+  Clock,
+  Calendar,
+  ClipboardList,
+  AlertTriangle,
+  BadgeCheck,
+  Wifi,
+  Zap,
+  SkipForward,
+  Volume2,
 } from 'lucide-react';
 
-export const AdminParticipants: React.FC = () => {
-  const { participants, addParticipant, deleteParticipant, updateParticipant, importParticipants } = useApp();
+const GROUP_OPTIONS = [
+  'Kelompok Semeru',
+  'Kelompok Rinjani',
+  'Kelompok Merbabu',
+  'Kelompok Bromo',
+  'Panitia',
+  'Tamu Undangan',
+];
 
-  // Search and Filters States
+const SAMPLE_CSV = `CAI-2026-101,Rizky Pratama,25,L,Kelompok Semeru,Surabaya,58C3FA2C
+CAI-2026-102,Dewi Lestari,28,P,Kelompok Bromo,Sidoarjo,8A9B10C2
+CAI-2026-103,Bambang Pamungkas,30,L,Kelompok Rinjani,Malang,4E5F6D7B
+CAI-2026-104,Siti Aminah,24,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
+
+export const AdminParticipants: React.FC = () => {
+  const {
+    participants,
+    checkInLogs,
+    sessions,
+    fetchSessions,
+    addParticipant,
+    deleteParticipant,
+    updateParticipant,
+    importParticipants,
+    registerRfid,
+  } = useApp();
+
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'absent'>('all');
   const [groupFilter, setGroupFilter] = useState<string>('all');
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
 
-  // Modal / Form States
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isRecapOpen, setIsRecapOpen] = useState(false);
+  const [recapParticipant, setRecapParticipant] = useState<Participant | null>(null);
 
-  // New Participant Form State
   const [newParticipant, setNewParticipant] = useState({
     id: '',
     name: '',
+    age: '',
     gender: 'L' as 'L' | 'P',
     group: 'Kelompok Semeru',
     origin: '',
-    rfidCardId: ''
+    rfidCardId: '',
   });
   const [addError, setAddError] = useState('');
 
-  // Editing Participant Form State
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
 
-  // Import Parser States
   const [importText, setImportText] = useState('');
   const [importPreview, setImportPreview] = useState<Omit<Participant, 'isCheckedIn'>[]>([]);
   const [importError, setImportError] = useState('');
   const [importSuccessMsg, setImportSuccessMsg] = useState('');
 
-  // Sample CSV string for quick testing
-  const SAMPLE_CSV = `CAI-2026-101,Rizky Pratama,L,Kelompok Semeru,Surabaya,58C3FA2C
-CAI-2026-102,Dewi Lestari,P,Kelompok Bromo,Sidoarjo,8A9B10C2
-CAI-2026-103,Bambang Pamungkas,L,Kelompok Rinjani,Malang,4E5F6D7B
-CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
+  const [isOtsRfidOpen, setIsOtsRfidOpen] = useState(false);
+  const [otsSearchQuery, setOtsSearchQuery] = useState('');
+  const [otsSelectedParticipant, setOtsSelectedParticipant] = useState<Participant | null>(null);
+  const otsRfidInputRef = useRef<HTMLInputElement>(null);
+  const [otsRfidValue, setOtsRfidValue] = useState('');
+  const [otsMessage, setOtsMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Get unique groups for dropdown filter
-  const groupsList = Array.from(new Set(participants.map(p => p.group)));
+  const [isMassPairOpen, setIsMassPairOpen] = useState(false);
+  const [massPairIndex, setMassPairIndex] = useState(0);
+  const massPairInputRef = useRef<HTMLInputElement>(null);
+  const [massPairMessage, setMassPairMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [massPairDone, setMassPairDone] = useState(false);
 
-  // Filter participants
-  const filteredParticipants = participants.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          p.origin.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' 
-      ? true 
-      : statusFilter === 'present' 
-      ? p.isCheckedIn 
-      : !p.isCheckedIn;
+  const sortedSessions = useMemo(
+    () =>
+      [...sessions].sort((a, b) => {
+        const dayCmp = a.date.localeCompare(b.date);
+        return dayCmp !== 0 ? dayCmp : a.sessionNumber - b.sessionNumber;
+      }),
+    [sessions],
+  );
 
-    const matchesGroup = groupFilter === 'all'
-      ? true
-      : p.group === groupFilter;
+  const selectedSession = useMemo(
+    () => sortedSessions.find((s) => s.id === selectedSessionId) || null,
+    [sortedSessions, selectedSessionId],
+  );
 
-    return matchesSearch && matchesStatus && matchesGroup;
-  });
+  const getSessionStatus = (participantId: string, sessionId: string) => {
+    const log = checkInLogs.find(
+      (l) => l.participantId === participantId && l.sessionId === sessionId && l.status === 'success',
+    );
+    if (!log) return { status: 'Tidak Hadir' as const, detail: '-' };
+    if (log.isLate) {
+      const mins = log.lateDuration ?? 0;
+      return { status: 'Terlambat' as const, detail: `Terlambat ${mins} Mnt` };
+    }
+    return { status: 'Hadir' as const, detail: 'Tepat Waktu' };
+  };
 
-  // Handle Add Participant Submit
+  const groupsList = useMemo(() => Array.from(new Set(participants.map((p) => p.group))), [participants]);
+
+  const filteredParticipants = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return participants.filter((p) => {
+      const matchSearch =
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        p.origin.toLowerCase().includes(q);
+      const matchStatus =
+        statusFilter === 'all'
+          ? true
+          : statusFilter === 'present'
+          ? p.isCheckedIn
+          : !p.isCheckedIn;
+      const matchGroup = groupFilter === 'all' ? true : p.group === groupFilter;
+      return matchSearch && matchStatus && matchGroup;
+    });
+  }, [participants, searchQuery, statusFilter, groupFilter]);
+
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddError('');
-
     if (!newParticipant.id.trim()) {
       setAddError('ID Peserta wajib diisi!');
       return;
@@ -98,85 +165,65 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
       setAddError('Kota Asal wajib diisi!');
       return;
     }
-
     const formattedId = newParticipant.id.trim().toUpperCase();
-
+    const ageVal = newParticipant.age.trim() ? parseInt(newParticipant.age.trim(), 10) : null;
     const success = await addParticipant({
       id: formattedId,
       name: newParticipant.name.trim(),
+      age: isNaN(ageVal as number) ? null : ageVal,
       gender: newParticipant.gender,
       group: newParticipant.group,
       origin: newParticipant.origin.trim(),
-      rfidCardId: newParticipant.rfidCardId.trim() || null
+      rfidCardId: newParticipant.rfidCardId.trim().toUpperCase() || null,
     });
-
     if (success) {
       setIsAddOpen(false);
-      // Reset form
-      setNewParticipant({
-        id: '',
-        name: '',
-        gender: 'L',
-        group: 'Kelompok Semeru',
-        origin: '',
-        rfidCardId: ''
-      });
+      setNewParticipant({ id: '', name: '', age: '', gender: 'L', group: 'Kelompok Semeru', origin: '', rfidCardId: '' });
     } else {
       setAddError(`ID Peserta "${formattedId}" sudah terdaftar di sistem!`);
     }
   };
 
-  // Handle Edit Participant Submit
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingParticipant) return;
-
-    if (!editingParticipant.name.trim() || !editingParticipant.origin.trim()) {
-      return;
-    }
-
+    if (!editingParticipant.name.trim() || !editingParticipant.origin.trim()) return;
     await updateParticipant({
       ...editingParticipant,
       name: editingParticipant.name.trim(),
-      origin: editingParticipant.origin.trim()
+      origin: editingParticipant.origin.trim(),
     });
-    
     setIsEditOpen(false);
     setEditingParticipant(null);
   };
 
-  // Parsing pasted CSV string
   const handleParseCSV = () => {
     setImportError('');
     setImportPreview([]);
     setImportSuccessMsg('');
-
     if (!importText.trim()) {
       setImportError('Silakan tempel data teks CSV terlebih dahulu.');
       return;
     }
-
     const lines = importText.split('\n');
     const parsedList: Omit<Participant, 'isCheckedIn'>[] = [];
     let lineErrors = 0;
-
-    lines.forEach((line, index) => {
+    lines.forEach((line) => {
       const cleanLine = line.trim();
-      if (!cleanLine) return; // skip empty line
-
+      if (!cleanLine) return;
       const columns = cleanLine.split(',');
       if (columns.length >= 5) {
         const id = columns[0].trim().toUpperCase();
         const name = columns[1].trim();
-        const genderRaw = columns[2].trim().toUpperCase();
-        const group = columns[3].trim();
-        const origin = columns[4].trim();
-        const rfidCardId = columns[5] ? columns[5].trim().toUpperCase() : null;
-
-        const gender = (genderRaw === 'P' || genderRaw === 'PEREMPUAN') ? 'P' : 'L';
-
+        const ageRaw = columns[2].trim();
+        const age = ageRaw && !isNaN(parseInt(ageRaw, 10)) ? parseInt(ageRaw, 10) : null;
+        const genderRaw = columns[3].trim().toUpperCase();
+        const group = columns[4].trim();
+        const origin = columns[5] ? columns[5].trim() : '';
+        const rfidCardId = columns[6] ? columns[6].trim().toUpperCase() : null;
+        const gender = genderRaw === 'P' || genderRaw === 'PEREMPUAN' ? 'P' : 'L';
         if (id && name && group && origin) {
-          parsedList.push({ id, name, gender, group, origin, rfidCardId });
+          parsedList.push({ id, name, age, gender, group, origin, rfidCardId });
         } else {
           lineErrors++;
         }
@@ -184,29 +231,21 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
         lineErrors++;
       }
     });
-
     if (parsedList.length === 0) {
       setImportError('Format CSV tidak valid atau kolom kosong! Periksa contoh format.');
     } else {
       setImportPreview(parsedList);
-      if (lineErrors > 0) {
-        setImportError(`Ditemukan ${lineErrors} baris tidak valid yang akan dilewati.`);
-      }
+      if (lineErrors > 0) setImportError(`Ditemukan ${lineErrors} baris tidak valid yang akan dilewati.`);
     }
   };
 
-  // Execute Import Preview to Global Store
   const handleExecuteImport = async () => {
     if (importPreview.length === 0) return;
-
     const importedCount = await importParticipants(importPreview);
     const skippedCount = importPreview.length - importedCount;
-
     setImportSuccessMsg(`Berhasil mengimpor ${importedCount} peserta baru.`);
-    if (skippedCount > 0) {
-      setImportSuccessMsg(prev => `${prev} (${skippedCount} dilewati karena ID sudah terdaftar).`);
-    }
-
+    if (skippedCount > 0)
+      setImportSuccessMsg((prev) => `${prev} (${skippedCount} dilewati karena ID sudah terdaftar).`);
     setImportPreview([]);
     setImportText('');
   };
@@ -216,29 +255,106 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
     setImportSuccessMsg('Contoh teks CSV berhasil disalin ke papan klip!');
   };
 
-  // Manual CheckIn state toggles inside the table
-  const handleToggleCheckInManual = async (p: Participant) => {
-    if (p.isCheckedIn) {
-      await updateParticipant({
-        ...p,
-        isCheckedIn: false,
-        checkInTime: null,
-        scannedBy: null
-      });
+  const openRecapModal = (p: Participant) => {
+    setRecapParticipant(p);
+    setIsRecapOpen(true);
+  };
+
+  const otsSearchResults = useMemo(() => {
+    if (!otsSearchQuery.trim()) return [];
+    const q = otsSearchQuery.toLowerCase();
+    return participants.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        p.origin.toLowerCase().includes(q),
+    ).slice(0, 10);
+  }, [participants, otsSearchQuery]);
+
+  const handleOtsSelectParticipant = (p: Participant) => {
+    setOtsSelectedParticipant(p);
+    setOtsSearchQuery('');
+    setOtsMessage(null);
+    setTimeout(() => otsRfidInputRef.current?.focus(), 100);
+  };
+
+  const handleOtsRfidSubmit = async (rfid: string) => {
+    if (!otsSelectedParticipant || !rfid.trim()) return;
+    const result = await registerRfid(otsSelectedParticipant.id, rfid.trim());
+    setOtsMessage({ type: result.success ? 'success' : 'error', text: result.message });
+    if (result.success) {
+      setOtsSelectedParticipant(null);
+      setOtsRfidValue('');
+    }
+    setTimeout(() => setOtsMessage(null), 4000);
+  };
+
+  const unregisteredParticipants = useMemo(
+    () => participants.filter((p) => !p.rfidCardId),
+    [participants],
+  );
+
+  const massPairCurrent = unregisteredParticipants[massPairIndex] || null;
+
+  const handleMassPairNext = useCallback(async (rfid: string) => {
+    if (!massPairCurrent || !rfid.trim()) return;
+    const result = await registerRfid(massPairCurrent.id, rfid.trim());
+    setMassPairMessage({ type: result.success ? 'success' : 'error', text: result.message });
+    if (result.success) {
+      if (massPairIndex + 1 >= unregisteredParticipants.length) {
+        setMassPairDone(true);
+      } else {
+        setMassPairIndex((prev) => prev + 1);
+      }
+    }
+    setTimeout(() => {
+      setMassPairMessage(null);
+      if (massPairInputRef.current) massPairInputRef.current.value = '';
+      massPairInputRef.current?.focus();
+    }, 1500);
+  }, [massPairCurrent, massPairIndex, unregisteredParticipants.length]);
+
+  const handleMassPairSkip = () => {
+    if (massPairIndex + 1 >= unregisteredParticipants.length) {
+      setMassPairDone(true);
     } else {
-      await updateParticipant({
-        ...p,
-        isCheckedIn: true,
-        checkInTime: new Date().toISOString(),
-        scannedBy: "Admin (Manual)"
-      });
+      setMassPairIndex((prev) => prev + 1);
+      setMassPairMessage(null);
+      if (massPairInputRef.current) massPairInputRef.current.value = '';
+      massPairInputRef.current?.focus();
     }
   };
 
+  const playBeep = () => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 1200;
+      osc.type = 'sine';
+      gain.gain.value = 0.3;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } catch { /* ignore */ }
+  };
+
+  const recapStats = useMemo(() => {
+    if (!recapParticipant) return { attended: 0, late: 0, total: 0 };
+    let attended = 0;
+    let late = 0;
+    sortedSessions.forEach((s) => {
+      const st = getSessionStatus(recapParticipant.id, s.id);
+      if (st.status === 'Hadir' || st.status === 'Terlambat') attended++;
+      if (st.status === 'Terlambat') late++;
+    });
+    return { attended, late, total: sortedSessions.length };
+  }, [recapParticipant, sortedSessions, checkInLogs]);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      
-      {/* Header Panel */}
+      {/* ── Header ── */}
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
@@ -246,25 +362,46 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
             Manajemen Data Peserta CAI
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Tambah peserta individu, hapus, kelola status kehadiran, atau import data massal lewat CSV.
+            Kelola data peserta, lihat rekap kehadiran per sesi, atau import data massal via CSV.
           </p>
         </div>
-
-        {/* Header Action Buttons */}
-        <div className="flex gap-2.5">
+        <div className="flex gap-2.5 flex-wrap">
+          <button
+            onClick={() => {
+              setIsMassPairOpen(true);
+              setMassPairIndex(0);
+              setMassPairDone(false);
+              setMassPairMessage(null);
+            }}
+            disabled={unregisteredParticipants.length === 0}
+            className="px-4 py-2.5 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-500 transition-all flex items-center gap-1.5 active:scale-95 shadow-md shadow-emerald-700/10 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Zap className="h-4 w-4" />
+            Daftar RFID Massal
+          </button>
+          <button
+            onClick={() => {
+              setIsOtsRfidOpen(true);
+              setOtsSelectedParticipant(null);
+              setOtsSearchQuery('');
+              setOtsMessage(null);
+              setOtsRfidValue('');
+            }}
+            className="px-4 py-2.5 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-500 transition-all flex items-center gap-1.5 active:scale-95 shadow-md shadow-violet-700/10 cursor-pointer"
+          >
+            <CreditCard className="h-4 w-4" />
+            Daftar RFID On-The-Spot
+          </button>
           <button
             onClick={() => setIsImportOpen(true)}
             className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center gap-1.5 active:scale-95 shadow-sm cursor-pointer"
-            id="import-csv-btn"
           >
             <Upload className="h-3.5 w-3.5 text-slate-400" />
             Import CSV
           </button>
-
           <button
             onClick={() => setIsAddOpen(true)}
             className="px-4 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-500 transition-all flex items-center gap-1.5 active:scale-95 shadow-md shadow-blue-700/10 cursor-pointer"
-            id="add-participant-btn"
           >
             <Plus className="h-4 w-4" />
             Tambah Peserta
@@ -272,194 +409,256 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
         </div>
       </div>
 
-      {/* Filter and Search Bar Toolbar */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-4 mb-6 flex flex-col md:flex-row gap-4">
-        
-        {/* Search Input */}
-        <div className="relative flex-1">
-          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-            <Search className="h-4.5 w-4.5" />
+      {/* ── Filter Toolbar ── */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-4 mb-6">
+        {/* Row 1: Search + Kelompok + Status filter */}
+        <div className="flex flex-col md:flex-row gap-4 mb-4">
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <Search className="h-4.5 w-4.5" />
+            </div>
+            <input
+              type="text"
+              placeholder="Cari berdasarkan ID, nama, atau kota asal..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
-          <input
-            type="text"
-            placeholder="Cari berdasarkan ID, nama, atau kota asal..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-slate-400 hidden sm:block" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="all">Semua Kehadiran</option>
+              <option value="present">Hadir</option>
+              <option value="absent">Belum Hadir</option>
+            </select>
+            <select
+              value={groupFilter}
+              onChange={(e) => setGroupFilter(e.target.value)}
+              className="px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="all">Semua Kelompok</option>
+              {groupsList.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* Status Filter */}
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-slate-400 hidden sm:block" />
+        {/* Row 2: Session Filter */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+            <Calendar className="h-4 w-4 text-blue-500" />
+            Filter Status per Sesi:
+          </div>
           <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            value={selectedSessionId}
+            onChange={(e) => setSelectedSessionId(e.target.value)}
+            className="flex-1 w-full sm:w-auto px-3 py-2.5 border border-blue-200 bg-blue-50/30 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">Semua Kehadiran</option>
-            <option value="present">Hadir</option>
-            <option value="absent">Belum Hadir</option>
-          </select>
-
-          {/* Group Filter */}
-          <select
-            value={groupFilter}
-            onChange={(e) => setGroupFilter(e.target.value)}
-            className="px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          >
-            <option value="all">Semua Kelompok</option>
-            {groupsList.map(g => (
-              <option key={g} value={g}>{g}</option>
+            <option value="">-- Pilih Sesi Aktif --</option>
+            {sortedSessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.dayName} &middot; {s.name} (Sesi {s.sessionNumber}) &middot; {s.startTime}
+              </option>
             ))}
           </select>
+          {selectedSession && (
+            <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-100 px-2.5 py-1 rounded-full border border-blue-200 whitespace-nowrap">
+              {selectedSession.dayName} &middot; {selectedSession.startTime}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Main Table Panel */}
+      {/* ── Main Table ── */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200/80">
             <thead className="bg-slate-50/75">
               <tr>
-                <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">ID Peserta</th>
-                <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Nama Lengkap</th>
-                <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gender</th>
-                <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">RFID Card</th>
-                <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Kelompok</th>
-                <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Asal Daerah</th>
-                <th scope="col" className="px-6 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status Absensi</th>
-                <th scope="col" className="px-6 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider">Aksi</th>
+                <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider w-12">No</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Nama Peserta</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">ID Card</th>
+                <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider">Umur</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gender</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Kelompok / Desa</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status Absensi</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Keterangan</th>
+                <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider">Aksi</th>
               </tr>
             </thead>
-            
             <tbody className="bg-white divide-y divide-slate-100 text-sm">
               {filteredParticipants.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400 text-xs font-medium">
+                  <td colSpan={9} className="px-6 py-12 text-center text-slate-400 text-xs font-medium">
                     Tidak ada data peserta ditemukan yang sesuai dengan kriteria filter.
                   </td>
                 </tr>
               ) : (
-                filteredParticipants.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/40 transition-colors">
-                    {/* ID */}
-                    <td className="px-6 py-4 whitespace-nowrap font-mono font-bold text-xs text-slate-800">
-                      {p.id}
-                    </td>
+                filteredParticipants.map((p, idx) => {
+                  const sessionStatus = selectedSessionId
+                    ? getSessionStatus(p.id, selectedSessionId)
+                    : null;
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50/40 transition-colors">
+                      {/* No */}
+                      <td className="px-4 py-3.5 text-center text-xs font-bold text-slate-400">
+                        {idx + 1}
+                      </td>
 
-                    {/* Name */}
-                    <td className="px-6 py-4 whitespace-nowrap font-bold text-slate-900">
-                      {p.name}
-                    </td>
+                      {/* Nama */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <div className="font-bold text-slate-900 text-sm">{p.name}</div>
+                        <div className="text-[10px] font-mono text-slate-400 mt-0.5">{p.id}</div>
+                      </td>
 
-                    {/* Gender badge */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold leading-none ${
-                        p.gender === 'L' 
-                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' 
-                          : 'bg-pink-50 text-pink-700 border border-pink-100'
-                      }`}>
-                        {p.gender === 'L' ? 'LAKI-LAKI (L)' : 'PEREMPUAN (P)'}
-                      </span>
-                    </td>
-
-                    {/* RFID Card */}
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-semibold">
-                      {p.rfidCardId ? (
-                        <span className="inline-flex items-center gap-1.5 bg-blue-50/50 text-blue-700 border border-blue-100/50 px-2.5 py-1 rounded-lg font-mono font-bold">
-                          <span className="relative flex h-1.5 w-1.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-600"></span>
+                      {/* ID CARD (RFID UID) */}
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
+                        {p.rfidCardId ? (
+                          <span className="inline-flex items-center gap-1.5 bg-blue-50/60 text-blue-700 border border-blue-100/60 px-2.5 py-1 rounded-lg font-mono font-bold">
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-600" />
+                            </span>
+                            {p.rfidCardId}
                           </span>
-                          {p.rfidCardId}
+                        ) : (
+                          <span className="text-slate-400 italic text-[11px]">Belum Didaftarkan</span>
+                        )}
+                      </td>
+
+                      {/* Umur */}
+                      <td className="px-4 py-3.5 whitespace-nowrap text-center text-xs font-bold text-slate-600">
+                        {p.age ? (
+                          <span className="bg-slate-100 px-2 py-0.5 rounded-md font-mono">{p.age}</span>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
+
+                      {/* Gender */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold leading-none ${
+                            p.gender === 'L'
+                              ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                              : 'bg-pink-50 text-pink-700 border border-pink-100'
+                          }`}
+                        >
+                          {p.gender === 'L' ? 'LAKI-LAKI (L)' : 'PEREMPUAN (P)'}
                         </span>
-                      ) : (
-                        <span className="text-slate-400 italic text-[11px]">Belum di-set</span>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* Group */}
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-slate-600">
-                      {p.group}
-                    </td>
+                      {/* Kelompok / Desa */}
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs font-bold text-slate-600">
+                        {p.group}
+                      </td>
 
-                    {/* Origin */}
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-semibold text-slate-600">
-                      {p.origin}
-                    </td>
-
-                    {/* Check In status */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {p.isCheckedIn ? (
-                        <div className="flex flex-col">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-100 self-start">
+                      {/* Status Absensi (session-aware) */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        {sessionStatus ? (
+                          sessionStatus.status === 'Hadir' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <CheckCircle className="h-3 w-3 text-emerald-600" />
+                              HADIR
+                            </span>
+                          ) : sessionStatus.status === 'Terlambat' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              <AlertTriangle className="h-3 w-3 text-amber-600" />
+                              TERLAMBAT
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                              <XCircle className="h-3 w-3 text-slate-400" />
+                              TIDAK HADIR
+                            </span>
+                          )
+                        ) : p.isCheckedIn ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-100">
                             <CheckCircle className="h-3 w-3 text-blue-600" />
                             HADIR
                           </span>
-                          <span className="text-[10px] text-slate-400 mt-1 font-medium font-mono">
-                            {p.checkInTime ? new Date(p.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''} • {p.scannedBy || 'System'}
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                            <XCircle className="h-3 w-3 text-slate-400" />
+                            BELUM HADIR
                           </span>
-                        </div>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
-                          <XCircle className="h-3 w-3 text-slate-400" />
-                          BELUM HADIR
-                        </span>
-                      )}
-                    </td>
+                        )}
+                      </td>
 
-                    {/* Actions */}
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-medium">
-                      <div className="flex items-center justify-center gap-2">
-                        {/* Manual toggle attendance */}
-                        <button
-                          onClick={() => handleToggleCheckInManual(p)}
-                          className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all border cursor-pointer ${
-                            p.isCheckedIn 
-                              ? 'bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-800'
-                              : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-800'
-                          }`}
-                          title={p.isCheckedIn ? "Batalkan Absensi" : "Verifikasi Hadir Manual"}
-                        >
-                          {p.isCheckedIn ? "Undo" : "Hadir"}
-                        </button>
+                      {/* Keterangan */}
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs font-semibold">
+                        {sessionStatus ? (
+                          sessionStatus.status === 'Hadir' ? (
+                            <span className="text-emerald-700 flex items-center gap-1">
+                              <BadgeCheck className="h-3.5 w-3.5" />
+                              Tepat Waktu
+                            </span>
+                          ) : sessionStatus.status === 'Terlambat' ? (
+                            <span className="text-amber-700 flex items-center gap-1">
+                              <Clock className="h-3.5 w-3.5" />
+                              {sessionStatus.detail}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
 
-                        {/* Edit */}
-                        <button
-                          onClick={() => {
+                      {/* Aksi */}
+                      <td className="px-4 py-3.5 whitespace-nowrap text-center text-xs font-medium">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => openRecapModal(p)}
+                            className="p-1.5 bg-violet-50 border border-violet-200 text-violet-600 rounded-lg hover:bg-violet-100 transition-colors cursor-pointer"
+                            title="Lihat Rekap"
+                          >
+                            <ClipboardList className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
                               setEditingParticipant(p);
                               setIsEditOpen(true);
-                          }}
-                          className="p-1.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                          title="Ubah Data"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-
-                        {/* Delete */}
-                        <button
-                          onClick={async () => {
-                            if (confirm(`Apakah Anda yakin ingin menghapus peserta "${p.name}"?`)) {
-                              await deleteParticipant(p.id);
-                            }
-                          }}
-                          className="p-1.5 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg hover:bg-rose-100 transition-colors cursor-pointer"
-                          title="Hapus"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                            }}
+                            className="p-1.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                            title="Ubah Data"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (confirm(`Apakah Anda yakin ingin menghapus peserta "${p.name}"?`)) {
+                                await deleteParticipant(p.id);
+                              }
+                            }}
+                            className="p-1.5 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg hover:bg-rose-100 transition-colors cursor-pointer"
+                            title="Hapus"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODAL 1: ADD INDIVIDUAL PARTICIPANT */}
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL 1: ADD PARTICIPANT
+         ═══════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {isAddOpen && (
           <div className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center p-4">
@@ -474,19 +673,14 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                   <UserPlus className="h-4.5 w-4.5 text-blue-600" />
                   Tambah Peserta Baru
                 </h3>
-                <button
-                  onClick={() => setIsAddOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg cursor-pointer"
-                >
+                <button onClick={() => setIsAddOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg cursor-pointer">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
               <form onSubmit={handleAddSubmit} className="p-6 space-y-4">
                 {addError && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold rounded-xl">
-                    {addError}
-                  </div>
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold rounded-xl">{addError}</div>
                 )}
 
                 <div>
@@ -496,7 +690,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     required
                     placeholder="Contoh: CAI-2026-016"
                     value={newParticipant.id}
-                    onChange={(e) => setNewParticipant(prev => ({ ...prev, id: e.target.value }))}
+                    onChange={(e) => setNewParticipant((prev) => ({ ...prev, id: e.target.value }))}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-mono bg-white text-slate-900"
                   />
                 </div>
@@ -508,7 +702,20 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     required
                     placeholder="Contoh: Muhammad Rafli"
                     value={newParticipant.name}
-                    onChange={(e) => setNewParticipant(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => setNewParticipant((prev) => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Umur</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={120}
+                    placeholder="Contoh: 25"
+                    value={newParticipant.age}
+                    onChange={(e) => setNewParticipant((prev) => ({ ...prev, age: e.target.value }))}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
                   />
                 </div>
@@ -518,7 +725,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                   <div className="grid grid-cols-2 gap-2.5">
                     <button
                       type="button"
-                      onClick={() => setNewParticipant(prev => ({ ...prev, gender: 'L' }))}
+                      onClick={() => setNewParticipant((prev) => ({ ...prev, gender: 'L' }))}
                       className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                         newParticipant.gender === 'L'
                           ? 'bg-indigo-50 border-indigo-400 text-indigo-900 ring-1 ring-indigo-400'
@@ -529,7 +736,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     </button>
                     <button
                       type="button"
-                      onClick={() => setNewParticipant(prev => ({ ...prev, gender: 'P' }))}
+                      onClick={() => setNewParticipant((prev) => ({ ...prev, gender: 'P' }))}
                       className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                         newParticipant.gender === 'P'
                           ? 'bg-pink-50 border-pink-400 text-pink-900 ring-1 ring-pink-400'
@@ -545,15 +752,14 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kelompok Kegiatan</label>
                   <select
                     value={newParticipant.group}
-                    onChange={(e) => setNewParticipant(prev => ({ ...prev, group: e.target.value }))}
+                    onChange={(e) => setNewParticipant((prev) => ({ ...prev, group: e.target.value }))}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none font-bold bg-white"
                   >
-                    <option value="Kelompok Semeru bg-white">Kelompok Semeru</option>
-                    <option value="Kelompok Rinjani bg-white">Kelompok Rinjani</option>
-                    <option value="Kelompok Merbabu bg-white">Kelompok Merbabu</option>
-                    <option value="Kelompok Bromo bg-white">Kelompok Bromo</option>
-                    <option value="Panitia bg-white">Panitia</option>
-                    <option value="Tamu Undangan bg-white">Tamu Undangan</option>
+                    {GROUP_OPTIONS.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -564,7 +770,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     required
                     placeholder="Contoh: Nganjuk"
                     value={newParticipant.origin}
-                    onChange={(e) => setNewParticipant(prev => ({ ...prev, origin: e.target.value }))}
+                    onChange={(e) => setNewParticipant((prev) => ({ ...prev, origin: e.target.value }))}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
                   />
                 </div>
@@ -575,8 +781,11 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     <button
                       type="button"
                       onClick={() => {
-                        const randomHex = Math.floor(Math.random() * 0xFFFFFFFF).toString(16).toUpperCase().padStart(8, '0');
-                        setNewParticipant(prev => ({ ...prev, rfidCardId: randomHex }));
+                        const hex = Math.floor(Math.random() * 0xffffffff)
+                          .toString(16)
+                          .toUpperCase()
+                          .padStart(8, '0');
+                        setNewParticipant((prev) => ({ ...prev, rfidCardId: hex }));
                       }}
                       className="text-[10px] text-blue-600 hover:underline hover:text-blue-500 font-bold"
                     >
@@ -587,23 +796,16 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     type="text"
                     placeholder="Contoh: 58C3FA2C"
                     value={newParticipant.rfidCardId}
-                    onChange={(e) => setNewParticipant(prev => ({ ...prev, rfidCardId: e.target.value }))}
+                    onChange={(e) => setNewParticipant((prev) => ({ ...prev, rfidCardId: e.target.value }))}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900 uppercase font-mono"
                   />
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 flex justify-end gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddOpen(false)}
-                    className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer bg-white"
-                  >
+                  <button type="button" onClick={() => setIsAddOpen(false)} className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer bg-white">
                     Batal
                   </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl cursor-pointer"
-                  >
+                  <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl cursor-pointer">
                     Simpan Peserta
                   </button>
                 </div>
@@ -613,7 +815,9 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
         )}
       </AnimatePresence>
 
-      {/* MODAL 2: EDIT PARTICIPANT */}
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL 2: EDIT PARTICIPANT
+         ═══════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {isEditOpen && editingParticipant && (
           <div className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center p-4">
@@ -646,7 +850,23 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     type="text"
                     required
                     value={editingParticipant.name}
-                    onChange={(e) => setEditingParticipant(prev => prev ? ({ ...prev, name: e.target.value }) : null)}
+                    onChange={(e) => setEditingParticipant((prev) => (prev ? { ...prev, name: e.target.value } : null))}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Umur</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={120}
+                    placeholder="Contoh: 25"
+                    value={editingParticipant.age ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                      setEditingParticipant((prev) => (prev ? { ...prev, age: isNaN(val as number) ? null : val } : null));
+                    }}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
                   />
                 </div>
@@ -656,7 +876,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                   <div className="grid grid-cols-2 gap-2.5">
                     <button
                       type="button"
-                      onClick={() => setEditingParticipant(prev => prev ? ({ ...prev, gender: 'L' }) : null)}
+                      onClick={() => setEditingParticipant((prev) => (prev ? { ...prev, gender: 'L' } : null))}
                       className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                         editingParticipant.gender === 'L'
                           ? 'bg-indigo-50 border-indigo-400 text-indigo-900 ring-1 ring-indigo-400'
@@ -667,7 +887,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     </button>
                     <button
                       type="button"
-                      onClick={() => setEditingParticipant(prev => prev ? ({ ...prev, gender: 'P' }) : null)}
+                      onClick={() => setEditingParticipant((prev) => (prev ? { ...prev, gender: 'P' } : null))}
                       className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                         editingParticipant.gender === 'P'
                           ? 'bg-pink-50 border-pink-400 text-pink-900 ring-1 ring-pink-400'
@@ -683,15 +903,14 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kelompok</label>
                   <select
                     value={editingParticipant.group}
-                    onChange={(e) => setEditingParticipant(prev => prev ? ({ ...prev, group: e.target.value }) : null)}
+                    onChange={(e) => setEditingParticipant((prev) => (prev ? { ...prev, group: e.target.value } : null))}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
                   >
-                    <option value="Kelompok Semeru bg-white">Kelompok Semeru</option>
-                    <option value="Kelompok Rinjani bg-white">Kelompok Rinjani</option>
-                    <option value="Kelompok Merbabu bg-white">Kelompok Merbabu</option>
-                    <option value="Kelompok Bromo bg-white">Kelompok Bromo</option>
-                    <option value="Panitia bg-white">Panitia</option>
-                    <option value="Tamu Undangan bg-white">Tamu Undangan</option>
+                    {GROUP_OPTIONS.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -701,7 +920,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     type="text"
                     required
                     value={editingParticipant.origin}
-                    onChange={(e) => setEditingParticipant(prev => prev ? ({ ...prev, origin: e.target.value }) : null)}
+                    onChange={(e) => setEditingParticipant((prev) => (prev ? { ...prev, origin: e.target.value } : null))}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
                   />
                 </div>
@@ -712,8 +931,11 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     <button
                       type="button"
                       onClick={() => {
-                        const randomHex = Math.floor(Math.random() * 0xFFFFFFFF).toString(16).toUpperCase().padStart(8, '0');
-                        setEditingParticipant(prev => prev ? ({ ...prev, rfidCardId: randomHex }) : null);
+                        const hex = Math.floor(Math.random() * 0xffffffff)
+                          .toString(16)
+                          .toUpperCase()
+                          .padStart(8, '0');
+                        setEditingParticipant((prev) => (prev ? { ...prev, rfidCardId: hex } : null));
                       }}
                       className="text-[10px] text-blue-600 hover:underline hover:text-blue-500 font-bold"
                     >
@@ -724,7 +946,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                     type="text"
                     placeholder="Contoh: 58C3FA2C"
                     value={editingParticipant.rfidCardId || ''}
-                    onChange={(e) => setEditingParticipant(prev => prev ? ({ ...prev, rfidCardId: e.target.value }) : null)}
+                    onChange={(e) => setEditingParticipant((prev) => (prev ? { ...prev, rfidCardId: e.target.value } : null))}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900 uppercase font-mono"
                   />
                 </div>
@@ -740,10 +962,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                   >
                     Batal
                   </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl cursor-pointer"
-                  >
+                  <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl cursor-pointer">
                     Simpan Perubahan
                   </button>
                 </div>
@@ -753,7 +972,9 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
         )}
       </AnimatePresence>
 
-      {/* MODAL 3: IMPORT CSV MASSAL */}
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL 3: IMPORT CSV
+         ═══════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {isImportOpen && (
           <div className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center p-4">
@@ -783,19 +1004,18 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
               </div>
 
               <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
-                {/* Info and Help */}
                 <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 text-xs text-blue-900">
                   <p className="font-bold flex items-center gap-1.5 mb-1.5 text-slate-900">
                     <HelpCircle className="h-4 w-4 shrink-0" />
                     Panduan Format Impor Teks Comma-Separated (CSV)
                   </p>
                   <p className="leading-relaxed mb-3 text-slate-600 font-medium">
-                    Tempel data baris baru dengan struktur kolom dipisahkan koma berikut (kolom ke-6 RFID opsional):<br />
+                    Tempel data baris baru dengan struktur kolom dipisahkan koma berikut (kolom ke-3 Umur, kolom ke-7 RFID opsional):
+                    <br />
                     <code className="font-bold font-mono bg-blue-100/75 px-1 py-0.5 rounded text-blue-950">
-                      ID_PESERTA,NAMA_LENGKAP,GENDER(L/P),KELOMPOK,KOTA_ASAL,RFID_CARD(Opsional)
+                      ID_PESERTA,NAMA_LENGKAP,UMUR,GENDER(L/P),KELOMPOK,KOTA_ASAL,RFID_CARD(Opsional)
                     </code>
                   </p>
-
                   <div className="bg-white p-2.5 rounded-lg border border-blue-200 font-mono text-[10px] text-slate-600 relative">
                     <span className="absolute top-2 right-2 text-[9px] font-bold text-blue-600 uppercase">Salin untuk Demo</span>
                     <button
@@ -808,11 +1028,8 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                 </div>
 
                 {importError && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold rounded-xl">
-                    {importError}
-                  </div>
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold rounded-xl">{importError}</div>
                 )}
-
                 {importSuccessMsg && (
                   <div className="p-3 bg-blue-50 border border-blue-200 text-blue-800 text-xs font-bold rounded-xl flex items-center gap-1.5">
                     <CheckCircle className="h-4 w-4 text-blue-600" />
@@ -820,28 +1037,21 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                   </div>
                 )}
 
-                {/* Main CSV Textarea */}
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tempel Data CSV</label>
                   <textarea
                     rows={5}
-                    placeholder="Contoh: CAI-2026-101,Rizky Pratama,L,Kelompok Semeru,Surabaya,58C3FA2C"
+                    placeholder="Contoh: CAI-2026-101,Rizky Pratama,25,L,Kelompok Semeru,Surabaya,58C3FA2C"
                     value={importText}
                     onChange={(e) => setImportText(e.target.value)}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs font-mono placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-slate-50 text-slate-900"
                   />
                 </div>
 
-                {/* Action Row */}
                 <div className="flex gap-2.5">
-                  <button
-                    type="button"
-                    onClick={handleParseCSV}
-                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer"
-                  >
+                  <button type="button" onClick={handleParseCSV} className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer">
                     Proses CSV & Tampilkan Preview
                   </button>
-                  
                   {importPreview.length > 0 && (
                     <button
                       type="button"
@@ -854,7 +1064,6 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                   )}
                 </div>
 
-                {/* Import Preview Table */}
                 {importPreview.length > 0 && (
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
                     <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 font-bold text-[10px] text-slate-500 uppercase">
@@ -866,6 +1075,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                           <tr>
                             <th className="p-2">ID</th>
                             <th className="p-2">Nama</th>
+                            <th className="p-2">Umur</th>
                             <th className="p-2">Gender</th>
                             <th className="p-2">RFID Card</th>
                             <th className="p-2">Kelompok</th>
@@ -877,6 +1087,7 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
                             <tr key={index} className="hover:bg-slate-50">
                               <td className="p-2 font-mono font-bold text-slate-800">{item.id}</td>
                               <td className="p-2 font-bold text-slate-900">{item.name}</td>
+                              <td className="p-2 font-mono">{item.age ?? '-'}</td>
                               <td className="p-2">{item.gender}</td>
                               <td className="p-2 font-mono text-blue-700 font-bold">{item.rfidCardId || '-'}</td>
                               <td className="p-2">{item.group}</td>
@@ -910,6 +1121,452 @@ CAI-2026-104,Siti Aminah,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
         )}
       </AnimatePresence>
 
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL 4: DAFTAR RFID ON-THE-SPOT (Alur A)
+         ═══════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {isOtsRfidOpen && (
+          <div className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-slate-200 overflow-hidden text-slate-900"
+            >
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-violet-50/50">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  <CreditCard className="h-4.5 w-4.5 text-violet-600" />
+                  Daftar RFID On-The-Spot
+                </h3>
+                <button
+                  onClick={() => {
+                    setIsOtsRfidOpen(false);
+                    setOtsSelectedParticipant(null);
+                    setOtsSearchQuery('');
+                    setOtsMessage(null);
+                    setOtsRfidValue('');
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {!otsSelectedParticipant ? (
+                  <>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Cari peserta berdasarkan nama, ID, atau kota asal, lalu tap kartu RFID.
+                    </p>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                        <Search className="h-4 w-4" />
+                      </div>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Ketik nama / ID peserta..."
+                        value={otsSearchQuery}
+                        onChange={(e) => {
+                          setOtsSearchQuery(e.target.value);
+                          setOtsMessage(null);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      />
+                    </div>
+                    {otsSearchResults.length > 0 && (
+                      <div className="border border-slate-200 rounded-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
+                        {otsSearchResults.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => handleOtsSelectParticipant(p)}
+                            className="w-full text-left px-4 py-3 hover:bg-violet-50 transition-colors flex items-center gap-3 cursor-pointer"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center text-xs font-bold shrink-0">
+                              {p.name.charAt(0)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold text-sm text-slate-900 truncate">{p.name}</div>
+                              <div className="text-[10px] font-mono text-slate-400">{p.id} &middot; {p.group}</div>
+                            </div>
+                            {p.rfidCardId && (
+                              <span className="text-[10px] font-mono text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 shrink-0">
+                                {p.rfidCardId}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3 p-3 bg-violet-50 border border-violet-200 rounded-xl">
+                      <div className="w-10 h-10 rounded-full bg-violet-200 text-violet-800 flex items-center justify-center font-bold text-sm shrink-0">
+                        {otsSelectedParticipant.name.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm text-slate-900">{otsSelectedParticipant.name}</div>
+                        <div className="text-[10px] font-mono text-slate-500">{otsSelectedParticipant.id}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setOtsSelectedParticipant(null);
+                          setOtsRfidValue('');
+                          setOtsMessage(null);
+                        }}
+                        className="text-[10px] font-bold text-violet-600 hover:underline cursor-pointer"
+                      >
+                        Ganti
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                        Tap / Ketik Kartu RFID
+                      </label>
+                      <input
+                        ref={otsRfidInputRef}
+                        type="text"
+                        placeholder="Tunggu input dari reader RFID..."
+                        value={otsRfidValue}
+                        onChange={(e) => setOtsRfidValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && otsRfidValue.trim()) {
+                            handleOtsRfidSubmit(otsRfidValue);
+                          }
+                        }}
+                        className="w-full px-4 py-3 border-2 border-violet-300 rounded-xl text-center text-lg font-mono font-bold placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 tracking-widest bg-violet-50/50"
+                      />
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        if (otsRfidValue.trim()) handleOtsRfidSubmit(otsRfidValue);
+                      }}
+                      disabled={!otsRfidValue.trim()}
+                      className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+                    >
+                      Simpan RFID
+                    </button>
+                  </>
+                )}
+
+                {otsMessage && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-semibold ${
+                      otsMessage.type === 'success'
+                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                        : 'bg-rose-50 border border-rose-200 text-rose-800'
+                    }`}
+                  >
+                    {otsMessage.text}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOtsRfidOpen(false);
+                    setOtsSelectedParticipant(null);
+                    setOtsSearchQuery('');
+                    setOtsMessage(null);
+                    setOtsRfidValue('');
+                  }}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer bg-white"
+                >
+                  Tutup
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL 5: DAFTAR RFID MASSAL (Alur B)
+         ═══════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {isMassPairOpen && (
+          <div className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-slate-200 overflow-hidden text-slate-900"
+            >
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  <Zap className="h-4.5 w-4.5 text-emerald-600" />
+                  Daftar RFID Massal
+                </h3>
+                <button
+                  onClick={() => setIsMassPairOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {unregisteredParticipants.length === 0 ? (
+                  <div className="text-center py-8">
+                    <CheckCircle className="h-12 w-12 text-emerald-400 mx-auto mb-3" />
+                    <p className="text-sm font-bold text-slate-700">Semua peserta sudah terdaftar RFID!</p>
+                    <p className="text-xs text-slate-400 mt-1">Tidak ada peserta yang perlu dipasangkan kartu.</p>
+                  </div>
+                ) : massPairDone ? (
+                  <div className="text-center py-8">
+                    <CheckCircle className="h-12 w-12 text-emerald-400 mx-auto mb-3" />
+                    <p className="text-sm font-bold text-slate-700">Selesai!</p>
+                    <p className="text-xs text-slate-400 mt-1">Semua peserta yang tersedia sudah dipasangkan RFID.</p>
+                    <button
+                      onClick={() => setIsMassPairOpen(false)}
+                      className="mt-4 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl cursor-pointer transition-all active:scale-95"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <span className="text-[11px] font-bold text-slate-500">Progress</span>
+                      <span className="text-sm font-extrabold text-emerald-700">
+                        {massPairIndex + 1} / {unregisteredParticipants.length}
+                      </span>
+                    </div>
+
+                    {massPairCurrent && (
+                      <>
+                        <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                          <div className="w-10 h-10 rounded-full bg-emerald-200 text-emerald-800 flex items-center justify-center font-bold text-sm shrink-0">
+                            {massPairCurrent.name.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-sm text-slate-900">{massPairCurrent.name}</div>
+                            <div className="text-[10px] font-mono text-slate-500">
+                              {massPairCurrent.id} &middot; {massPairCurrent.group} &middot; {massPairCurrent.origin}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Tap / Ketik Kartu RFID
+                          </label>
+                          <input
+                            ref={massPairInputRef}
+                            type="text"
+                            autoFocus
+                            placeholder="Tunggu input dari reader RFID..."
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const val = (e.target as HTMLInputElement).value.trim();
+                                if (val) {
+                                  playBeep();
+                                  handleMassPairNext(val);
+                                }
+                              }
+                            }}
+                            className="w-full px-4 py-3 border-2 border-emerald-300 rounded-xl text-center text-lg font-mono font-bold placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 tracking-widest bg-emerald-50/50"
+                          />
+                        </div>
+
+                        <div className="flex gap-2.5">
+                          <button
+                            onClick={handleMassPairSkip}
+                            className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                          >
+                            <SkipForward className="h-3.5 w-3.5" />
+                            Lewati
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {massPairMessage && (
+                      <div
+                        className={`p-3 rounded-xl text-xs font-semibold ${
+                          massPairMessage.type === 'success'
+                            ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                            : 'bg-rose-50 border border-rose-200 text-rose-800'
+                        }`}
+                      >
+                        {massPairMessage.text}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsMassPairOpen(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer bg-white"
+                >
+                  Tutup
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL 6: REKAP INDIVIDUAL
+         ═══════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {isRecapOpen && recapParticipant && (
+          <div className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-xl max-w-2xl w-full border border-slate-200 overflow-hidden text-slate-900"
+            >
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  <ClipboardList className="h-4.5 w-4.5 text-violet-600" />
+                  Rekap Kehadiran Individu
+                </h3>
+                <button
+                  onClick={() => {
+                    setIsRecapOpen(false);
+                    setRecapParticipant(null);
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+                {/* Participant Info Card */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="w-12 h-12 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center border border-violet-200 shrink-0">
+                    <Users className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-900 text-sm">{recapParticipant.name}</div>
+                    <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                      <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">{recapParticipant.id}</span>
+                      <span className="mx-1.5">&middot;</span>
+                      {recapParticipant.group}
+                      <span className="mx-1.5">&middot;</span>
+                      {recapParticipant.origin}
+                    </div>
+                  </div>
+                  {recapParticipant.rfidCardId && (
+                    <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-lg font-mono font-bold text-[11px]">
+                      <CreditCard className="h-3 w-3" />
+                      {recapParticipant.rfidCardId}
+                    </span>
+                  )}
+                </div>
+
+                {/* Summary Stats */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                    <div className="text-lg font-extrabold text-slate-900">{recapStats.total}</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Total Sesi</div>
+                  </div>
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                    <div className="text-lg font-extrabold text-emerald-700">{recapStats.attended}</div>
+                    <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider mt-0.5">Hadir</div>
+                  </div>
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-center">
+                    <div className="text-lg font-extrabold text-amber-700">{recapStats.late}</div>
+                    <div className="text-[10px] font-bold text-amber-500 uppercase tracking-wider mt-0.5">Terlambat</div>
+                  </div>
+                </div>
+
+                {/* Attendance Table per Session */}
+                {sortedSessions.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-400 font-medium">Belum ada sesi yang terdaftar di sistem.</div>
+                ) : (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <table className="min-w-full divide-y divide-slate-200 text-xs">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Hari</th>
+                          <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sesi</th>
+                          <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Jam Mulai</th>
+                          <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</th>
+                          <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Keterangan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {sortedSessions.map((s) => {
+                          const st = getSessionStatus(recapParticipant.id, s.id);
+                          return (
+                            <tr key={s.id} className="hover:bg-slate-50/40 transition-colors">
+                              <td className="px-3 py-3 font-bold text-slate-700 whitespace-nowrap">{s.dayName}</td>
+                              <td className="px-3 py-3 font-semibold text-slate-600 whitespace-nowrap">
+                                Sesi {s.sessionNumber} &middot; {s.name}
+                              </td>
+                              <td className="px-3 py-3 font-mono text-slate-500 whitespace-nowrap">{s.startTime}</td>
+                              <td className="px-3 py-3 whitespace-nowrap">
+                                {st.status === 'Hadir' ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                    <CheckCircle className="h-3 w-3 text-emerald-600" />
+                                    HADIR
+                                  </span>
+                                ) : st.status === 'Terlambat' ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                    <AlertTriangle className="h-3 w-3 text-amber-600" />
+                                    TERLAMBAT
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                                    <XCircle className="h-3 w-3 text-slate-400" />
+                                    TIDAK HADIR
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 whitespace-nowrap font-semibold">
+                                {st.status === 'Hadir' ? (
+                                  <span className="text-emerald-700 flex items-center gap-1">
+                                    <BadgeCheck className="h-3 w-3" />
+                                    Tepat Waktu
+                                  </span>
+                                ) : st.status === 'Terlambat' ? (
+                                  <span className="text-amber-700 flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {st.detail}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRecapOpen(false);
+                    setRecapParticipant(null);
+                  }}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer bg-white"
+                >
+                  Tutup
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

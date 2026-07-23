@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { Participant, CheckInLog } from '../types';
+import { Participant } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   QrCode, 
@@ -20,8 +20,11 @@ import {
 
 
 
+const RFID_BUFFER_TIMEOUT_MS = 2000;
+const RFID_MAX_BUFFER_LENGTH = 32;
+
 export const OperatorCheckIn: React.FC = () => {
-  const { participants, checkInParticipant, checkInByRfid, currentUser, checkInLogs } = useApp();
+  const { participants, checkInParticipant, currentUser, checkInLogs } = useApp();
   const [activeTab, setActiveTab] = useState<'qr' | 'rfid'>('rfid');
   const [searchQuery, setSearchQuery] = useState('');
   const [idInput, setIdInput] = useState('');
@@ -35,28 +38,112 @@ export const OperatorCheckIn: React.FC = () => {
     participant?: Participant;
   } | null>(null);
 
-  const scannerRef = useRef<HTMLDivElement>(null);
-  const hiddenInputRef = useRef<HTMLInputElement>(null);
+  // ── RFID Keyboard Emulator buffer ──
+  const rfidBufferRef = useRef('');
+  const rfidTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rfidStatusRef = useRef(rfidStatus);
+  rfidStatusRef.current = rfidStatus;
 
-  // Auto-focus hidden RFID input when RFID tab is active
-  const focusRfidInput = useCallback(() => {
-    if (activeTab === 'rfid' && hiddenInputRef.current && document.activeElement !== hiddenInputRef.current) {
-      hiddenInputRef.current.focus();
+  const resetRfidBuffer = useCallback(() => {
+    rfidBufferRef.current = '';
+    if (rfidTimerRef.current) {
+      clearTimeout(rfidTimerRef.current);
+      rfidTimerRef.current = null;
     }
-  }, [activeTab]);
+  }, []);
 
+  const scheduleRfidBufferReset = useCallback(() => {
+    if (rfidTimerRef.current) clearTimeout(rfidTimerRef.current);
+    rfidTimerRef.current = setTimeout(() => {
+      if (rfidBufferRef.current.length > 0) {
+        rfidBufferRef.current = '';
+      }
+    }, RFID_BUFFER_TIMEOUT_MS);
+  }, []);
+
+  // POST cardId to public /api/attendance endpoint
+  const postAttendance = useCallback(async (cardId: string) => {
+    if (rfidStatusRef.current === 'scanning') return;
+
+    setRfidStatus('scanning');
+    setFlashMessage(null);
+
+    try {
+      const API_BASE = 'http://localhost:5050/api';
+      const response = await fetch(`${API_BASE}/attendance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cardId }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setRfidStatus('success');
+        setFlashMessage({ type: 'success', text: data.message, participant: data.participant });
+      } else {
+        const isDoubleCheckIn = participants.some(
+          (p) => p.rfidCardId?.toUpperCase() === cardId.toUpperCase() && p.isCheckedIn,
+        );
+        setRfidStatus(isDoubleCheckIn ? 'warn' : 'error');
+        setFlashMessage({
+          type: isDoubleCheckIn ? 'warn' : 'error',
+          text: data.message,
+          participant: data.participant,
+        });
+      }
+    } catch {
+      setRfidStatus('error');
+      setFlashMessage({ type: 'error', text: 'Gagal terhubung dengan server backend.' });
+    }
+
+    setTimeout(() => setRfidStatus('idle'), 3000);
+  }, [participants]);
+
+  // Global keydown listener — captures RFID Keyboard Emulator keystrokes
   useEffect(() => {
     if (activeTab !== 'rfid') return;
 
-    focusRfidInput();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't capture when typing in a visible input/textarea/select
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
-    const handleGlobalClick = () => {
-      setTimeout(focusRfidInput, 100);
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (rfidBufferRef.current.length > 0) {
+          const cardId = rfidBufferRef.current.trim();
+          resetRfidBuffer();
+          postAttendance(cardId);
+        }
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        resetRfidBuffer();
+        return;
+      }
+
+      if (e.key === 'Backspace') {
+        rfidBufferRef.current = rfidBufferRef.current.slice(0, -1);
+        scheduleRfidBufferReset();
+        return;
+      }
+
+      if (/^[a-zA-Z0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (rfidBufferRef.current.length < RFID_MAX_BUFFER_LENGTH) {
+          rfidBufferRef.current += e.key.toLowerCase();
+          scheduleRfidBufferReset();
+        }
+      }
     };
 
-    document.addEventListener('click', handleGlobalClick);
-    return () => document.removeEventListener('click', handleGlobalClick);
-  }, [activeTab, focusRfidInput]);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      resetRfidBuffer();
+    };
+  }, [activeTab, postAttendance, resetRfidBuffer, scheduleRfidBufferReset]);
 
   // Filter participants for manual autocomplete search (only show unchecked ones)
   const filteredParticipants = searchQuery.trim() === ''
@@ -130,43 +217,12 @@ export const OperatorCheckIn: React.FC = () => {
     }, 1800); // simulated scan delay
   };
 
-  const handleRfidTap = async (rfidCard: string) => {
-    if (!currentUser || rfidStatus === 'scanning') return;
-    
-    setRfidStatus('scanning');
-    setFlashMessage(null);
-
-    const res = await checkInByRfid(rfidCard, currentUser.name);
-    
-    if (res.success) {
-      setRfidStatus('success');
-      setFlashMessage({
-        type: 'success',
-        text: res.message,
-        participant: res.participant
-      });
-    } else {
-      // Check if it's already checked in (warn) or not found (error)
-      const isDoubleCheckIn = participants.some(p => p.rfidCardId?.toUpperCase() === rfidCard.toUpperCase() && p.isCheckedIn);
-      setRfidStatus(isDoubleCheckIn ? 'warn' : 'error');
-      setFlashMessage({
-        type: isDoubleCheckIn ? 'warn' : 'error',
-        text: res.message,
-        participant: res.participant
-      });
-    }
-
-    // Restore rfidStatus to idle after 3 seconds
-    setTimeout(() => {
-      setRfidStatus('idle');
-    }, 3000);
-  };
-
   const handleRfidSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rfidInput.trim()) return;
-    handleRfidTap(rfidInput.trim());
+    const cardId = rfidInput.trim();
+    if (!cardId) return;
     setRfidInput('');
+    postAttendance(cardId);
   };
 
   // Calculate quick stats for the operator screen
@@ -368,19 +424,6 @@ export const OperatorCheckIn: React.FC = () => {
 
                 {/* RFID Controls / Interactive Simulation Deck */}
                 <div className="w-full md:w-1/2 flex flex-col justify-between space-y-4">
-
-                  {/* Hidden form for hardware RFID Keyboard Emulator */}
-                  <form onSubmit={handleRfidSubmit} className="opacity-0 absolute w-0 h-0 pointer-events-none overflow-hidden">
-                    <input
-                      ref={hiddenInputRef}
-                      type="text"
-                      autoFocus
-                      value={rfidInput}
-                      onChange={(e) => setRfidInput(e.target.value)}
-                      aria-hidden="true"
-                      tabIndex={-1}
-                    />
-                  </form>
 
                   {/* Emergency Manual Serial Entry */}
                   <form onSubmit={handleRfidSubmit} className="space-y-1">

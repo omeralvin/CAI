@@ -13,6 +13,8 @@ interface AppContextType {
   sessions: AttendanceSession[];
   fetchSessions: () => Promise<void>;
   upsertSession: (session: Omit<AttendanceSession, 'id'> & { id?: string }) => Promise<boolean>;
+  updateSession: (id: string, data: Partial<Omit<AttendanceSession, 'id'>>) => Promise<boolean>;
+  deleteSession: (id: string) => Promise<boolean>;
   fetchDashboard: (sessionId?: string) => Promise<DashboardData | null>;
   exportPdfUrl: (sessionId?: string) => string;
   checkInParticipant: (id: string, operatorName: string) => Promise<{ success: boolean; message: string; participant?: Participant }>;
@@ -21,6 +23,7 @@ interface AppContextType {
   deleteParticipant: (id: string) => Promise<void>;
   updateParticipant: (participant: Participant) => Promise<void>;
   importParticipants: (newParticipants: Omit<Participant, 'isCheckedIn'>[]) => Promise<number>;
+  registerRfid: (participantId: string, rfidCardId: string) => Promise<{ success: boolean; message: string }>;
   resetAllAttendance: () => Promise<void>;
 }
 
@@ -254,6 +257,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const registerRfid = async (participantId: string, rfidCardId: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/participants/${participantId}/register-rfid`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({ rfidCardId }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        await refreshData();
+        return { success: true, message: data.message || 'RFID berhasil didaftarkan' };
+      }
+      return { success: false, message: data.message || 'Gagal mendaftarkan RFID' };
+    } catch (error) {
+      console.error('Failed registering RFID:', error);
+      return { success: false, message: 'Gagal terhubung dengan server backend.' };
+    }
+  };
+
   const resetAllAttendance = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/participants/reset`, {
@@ -303,6 +327,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateSession = async (id: string, data: Partial<Omit<AttendanceSession, 'id'>>): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sessions/${id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        await fetchSessions();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed updating session:', error);
+      return false;
+    }
+  };
+
+  const deleteSession = async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sessions/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      });
+      if (res.ok) {
+        await fetchSessions();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed deleting session:', error);
+      return false;
+    }
+  };
+
   const fetchDashboard = useCallback(async (sessionId?: string): Promise<DashboardData | null> => {
     const token = localStorage.getItem('cai_token');
     if (!token) return null;
@@ -344,6 +403,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sessions,
       fetchSessions,
       upsertSession,
+      updateSession,
+      deleteSession,
       fetchDashboard,
       exportPdfUrl,
       checkInParticipant,
@@ -352,6 +413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deleteParticipant,
       updateParticipant,
       importParticipants,
+      registerRfid,
       resetAllAttendance
     }}>
       {children}

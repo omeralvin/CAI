@@ -10,6 +10,7 @@ export interface User {
 export interface Participant {
   id: string;
   name: string;
+  age?: number | null;
   gender: 'L' | 'P';
   group: string; // e.g. "Kelompok 1", "Panitia", "Tamu"
   origin: string; // e.g. "Kota Kediri", "Surabaya", "Malang"
