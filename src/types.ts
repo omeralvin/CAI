@@ -27,7 +27,7 @@ export interface CheckInLog {
   group: string;
   timestamp: string;
   operatorName: string;
-  status: 'success' | 'already_checked_in' | 'error';
+  status: 'PRESENT' | 'LATE' | 'already_checked_in' | 'error';
   sessionId?: string | null;
   isLate?: boolean;
   lateDuration?: number | null;
@@ -39,6 +39,7 @@ export interface AttendanceSession {
   date: string;
   sessionNumber: number;
   startTime: string;
+  endTime: string;
   name: string;
 }
 

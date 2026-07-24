@@ -17,6 +17,8 @@ interface AppContextType {
   deleteSession: (id: string) => Promise<boolean>;
   fetchDashboard: (sessionId?: string) => Promise<DashboardData | null>;
   exportPdfUrl: (sessionId?: string) => string;
+  activeSessionId: string | null;
+  setActiveSessionId: (id: string | null) => void;
   checkInParticipant: (id: string, operatorName: string) => Promise<{ success: boolean; message: string; participant?: Participant }>;
   checkInByRfid: (rfidCardId: string, operatorName: string) => Promise<{ success: boolean; message: string; participant?: Participant }>;
   addParticipant: (participant: Omit<Participant, 'isCheckedIn'>) => Promise<boolean>;
@@ -25,6 +27,7 @@ interface AppContextType {
   importParticipants: (newParticipants: Omit<Participant, 'isCheckedIn'>[]) => Promise<number>;
   registerRfid: (participantId: string, rfidCardId: string) => Promise<{ success: boolean; message: string }>;
   resetAllAttendance: () => Promise<void>;
+  refreshBackendData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -37,6 +40,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [checkInLogs, setCheckInLogs] = useState<CheckInLog[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   // Helper to fetch authorization headers
   const getHeaders = useCallback(() => {
@@ -150,7 +154,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const response = await fetch(`${API_BASE_URL}/checkin`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ participantId: id }),
+        body: JSON.stringify({ participantId: id, sessionId: activeSessionId }),
       });
 
       const data = await response.json();
@@ -172,7 +176,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const response = await fetch(`${API_BASE_URL}/checkin`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ rfidCardId }),
+        body: JSON.stringify({ rfidCardId, sessionId: activeSessionId }),
       });
 
       const data = await response.json();
@@ -208,7 +212,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteParticipant = async (id: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/participants/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/participants/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         headers: getHeaders(),
       });
@@ -223,7 +227,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateParticipant = async (updated: Participant) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/participants/${updated.id}`, {
+      const response = await fetch(`${API_BASE_URL}/participants/${encodeURIComponent(updated.id)}`, {
         method: 'PUT',
         headers: getHeaders(),
         body: JSON.stringify(updated),
@@ -259,7 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const registerRfid = async (participantId: string, rfidCardId: string): Promise<{ success: boolean; message: string }> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/participants/${participantId}/register-rfid`, {
+      const response = await fetch(`${API_BASE_URL}/participants/${encodeURIComponent(participantId)}/register-rfid`, {
         method: 'PATCH',
         headers: getHeaders(),
         body: JSON.stringify({ rfidCardId }),
@@ -407,6 +411,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deleteSession,
       fetchDashboard,
       exportPdfUrl,
+      activeSessionId,
+      setActiveSessionId,
       checkInParticipant,
       checkInByRfid,
       addParticipant,
@@ -414,7 +420,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateParticipant,
       importParticipants,
       registerRfid,
-      resetAllAttendance
+      resetAllAttendance,
+      refreshBackendData: refreshData
     }}>
       {children}
     </AppContext.Provider>

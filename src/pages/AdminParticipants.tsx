@@ -120,7 +120,7 @@ export const AdminParticipants: React.FC = () => {
 
   const getSessionStatus = (participantId: string, sessionId: string) => {
     const log = checkInLogs.find(
-      (l) => l.participantId === participantId && l.sessionId === sessionId && l.status === 'success',
+      (l) => l.participantId === participantId && l.sessionId === sessionId && (l.status === 'PRESENT' || l.status === 'LATE'),
     );
     if (!log) return { status: 'Tidak Hadir' as const, detail: '-' };
     if (log.isLate) {

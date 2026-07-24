@@ -15,7 +15,9 @@ import {
   UserPlus,
   CreditCard,
   Radio,
-  Wifi
+  Wifi,
+  Calendar,
+  ChevronDown,
 } from 'lucide-react';
 
 
@@ -24,7 +26,7 @@ const RFID_BUFFER_TIMEOUT_MS = 2000;
 const RFID_MAX_BUFFER_LENGTH = 32;
 
 export const OperatorCheckIn: React.FC = () => {
-  const { participants, checkInParticipant, currentUser, checkInLogs } = useApp();
+  const { participants, checkInParticipant, currentUser, checkInLogs, sessions, fetchSessions, activeSessionId, setActiveSessionId, refreshBackendData } = useApp();
   const [activeTab, setActiveTab] = useState<'qr' | 'rfid'>('rfid');
   const [searchQuery, setSearchQuery] = useState('');
   const [idInput, setIdInput] = useState('');
@@ -61,6 +63,21 @@ export const OperatorCheckIn: React.FC = () => {
     }, RFID_BUFFER_TIMEOUT_MS);
   }, []);
 
+  // Sync refs for callbacks that read latest state
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
+
+  const refreshBackendDataRef = useRef(refreshBackendData);
+  refreshBackendDataRef.current = refreshBackendData;
+
+  const participantsRef = useRef(participants);
+  participantsRef.current = participants;
+
+  // Fetch sessions on mount
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
   // POST cardId to public /api/attendance endpoint
   const postAttendance = useCallback(async (cardId: string) => {
     if (rfidStatusRef.current === 'scanning') return;
@@ -73,7 +90,7 @@ export const OperatorCheckIn: React.FC = () => {
       const response = await fetch(`${API_BASE}/attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardId }),
+        body: JSON.stringify({ cardId, sessionId: activeSessionIdRef.current }),
       });
 
       const data = await response.json();
@@ -81,8 +98,9 @@ export const OperatorCheckIn: React.FC = () => {
       if (data.success) {
         setRfidStatus('success');
         setFlashMessage({ type: 'success', text: data.message, participant: data.participant });
+        refreshBackendDataRef.current();
       } else {
-        const isDoubleCheckIn = participants.some(
+        const isDoubleCheckIn = participantsRef.current.some(
           (p) => p.rfidCardId?.toUpperCase() === cardId.toUpperCase() && p.isCheckedIn,
         );
         setRfidStatus(isDoubleCheckIn ? 'warn' : 'error');
@@ -91,6 +109,7 @@ export const OperatorCheckIn: React.FC = () => {
           text: data.message,
           participant: data.participant,
         });
+        refreshBackendDataRef.current();
       }
     } catch {
       setRfidStatus('error');
@@ -98,7 +117,7 @@ export const OperatorCheckIn: React.FC = () => {
     }
 
     setTimeout(() => setRfidStatus('idle'), 3000);
-  }, [participants]);
+  }, []);
 
   // Global keydown listener — captures RFID Keyboard Emulator keystrokes
   useEffect(() => {
@@ -247,14 +266,36 @@ export const OperatorCheckIn: React.FC = () => {
           </p>
         </div>
         
-        {/* Dynamic Operator Badge */}
-        <div className="self-start md:self-center bg-white border border-slate-200/80 px-4 py-2.5 rounded-xl shadow-sm flex items-center gap-2">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-          </span>
-          <span className="text-xs text-slate-500 font-medium">Sesi Aktif:</span>
-          <span className="text-xs font-bold text-slate-800">{currentUser?.name}</span>
+        <div className="flex items-center gap-3">
+          {/* Session Selector */}
+          <div className="relative">
+            <div className="flex items-center gap-2 bg-white border border-slate-200/80 px-3 py-2.5 rounded-xl shadow-sm">
+              <Calendar className="h-4 w-4 text-blue-600 shrink-0" />
+              <select
+                value={activeSessionId || ''}
+                onChange={(e) => setActiveSessionId(e.target.value || null)}
+                className="text-xs font-bold text-slate-800 bg-transparent border-none outline-none cursor-pointer appearance-none pr-5 max-w-[200px] truncate"
+              >
+                {sessions.length === 0 && <option value="">Tidak ada sesi</option>}
+                {sessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.startTime}–{s.endTime})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="h-3.5 w-3.5 text-slate-400 absolute right-2 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Operator Badge */}
+          <div className="self-start md:self-center bg-white border border-slate-200/80 px-4 py-2.5 rounded-xl shadow-sm flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+            </span>
+            <span className="text-xs text-slate-500 font-medium">Operator:</span>
+            <span className="text-xs font-bold text-slate-800">{currentUser?.name}</span>
+          </div>
         </div>
       </div>
 
@@ -644,7 +685,7 @@ export const OperatorCheckIn: React.FC = () => {
               ) : (
                 displayLogs.map(log => (
                   <div key={log.id} className="p-4 flex items-start gap-3 hover:bg-slate-50/50 transition-colors">
-                    {log.status === 'success' ? (
+                    {(log.status === 'PRESENT' || log.status === 'LATE') ? (
                       <div className="h-7 w-7 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
                         <CheckCircle2 className="h-4 w-4" />
                       </div>
@@ -672,7 +713,7 @@ export const OperatorCheckIn: React.FC = () => {
                         </span>
                       </div>
 
-                      {log.status !== 'success' && (
+                      {log.status !== 'PRESENT' && log.status !== 'LATE' && (
                         <span className="inline-block mt-1 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 leading-none">
                           Sudah Absen Sebelumnya
                         </span>

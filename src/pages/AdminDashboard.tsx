@@ -33,7 +33,7 @@ export const AdminDashboard: React.FC = () => {
 
   // Create modal
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', date: '', startTime: '07:30' });
+  const [createForm, setCreateForm] = useState({ name: '', date: '', startTime: '07:30', endTime: '09:00' });
   const [submitting, setSubmitting] = useState(false);
 
   // Edit modal
@@ -72,19 +72,20 @@ export const AdminDashboard: React.FC = () => {
 
   // ── Create Session ──
   const handleSubmitSession = async () => {
-    if (!createForm.name || !createForm.date || !createForm.startTime) return;
+    if (!createForm.name || !createForm.date || !createForm.startTime || !createForm.endTime) return;
     setSubmitting(true);
     try {
       const success = await upsertSession({
         name: createForm.name,
         date: new Date(createForm.date).toISOString(),
         startTime: createForm.startTime,
+        endTime: createForm.endTime,
         dayName: '',
         sessionNumber: 0,
       });
       if (success) {
         setIsCreateOpen(false);
-        setCreateForm({ name: '', date: '', startTime: '07:30' });
+        setCreateForm({ name: '', date: '', startTime: '07:30', endTime: '09:00' });
         await fetchSessions();
       }
     } catch (err) {
@@ -102,6 +103,7 @@ export const AdminDashboard: React.FC = () => {
       dayName: s.dayName,
       date: s.date,
       startTime: s.startTime,
+      endTime: s.endTime,
       sessionNumber: s.sessionNumber,
     });
     setIsEditOpen(true);
@@ -241,7 +243,7 @@ export const AdminDashboard: React.FC = () => {
                       {s.name || SESSION_LABELS[s.sessionNumber - 1] || `Sesi ${s.sessionNumber}`}
                     </span>
                     <span className={`text-[9px] font-mono ${selectedSessionId === s.id ? 'text-blue-100' : 'text-slate-400'}`}>
-                      {s.dayName} &middot; {s.startTime}
+                      {s.dayName} &middot; {s.startTime} — {s.endTime}
                     </span>
                   </div>
                 </button>
@@ -365,11 +367,11 @@ export const AdminDashboard: React.FC = () => {
                         {idx + 1}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-bold text-slate-800 truncate">{item.participantName}</div>
+                        <div className="text-xs font-bold text-slate-800 truncate">{item.group}</div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1 py-0.2 rounded">{item.participantId}</span>
                           <span className="text-[10px] text-slate-400">&middot;</span>
-                          <span className="text-[10px] text-slate-500">{item.group}</span>
+                          <span className="text-[10px] text-slate-500">{item.participantName}</span>
                         </div>
                       </div>
                       <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg shrink-0">
@@ -445,6 +447,15 @@ export const AdminDashboard: React.FC = () => {
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
                   />
                 </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Waktu Selesai</label>
+                  <input
+                    type="time"
+                    value={createForm.endTime}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, endTime: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
+                  />
+                </div>
               </div>
               <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
                 <button
@@ -456,7 +467,7 @@ export const AdminDashboard: React.FC = () => {
                 </button>
                 <button
                   onClick={handleSubmitSession}
-                  disabled={submitting || !createForm.name || !createForm.date || !createForm.startTime}
+                  disabled={submitting || !createForm.name || !createForm.date || !createForm.startTime || !createForm.endTime}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-sm"
                 >
                   {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
@@ -542,6 +553,15 @@ export const AdminDashboard: React.FC = () => {
                     type="time"
                     value={editForm.startTime || '07:30'}
                     onChange={(e) => setEditForm((p) => ({ ...p, startTime: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Jam Selesai</label>
+                  <input
+                    type="time"
+                    value={editForm.endTime || '09:00'}
+                    onChange={(e) => setEditForm((p) => ({ ...p, endTime: e.target.value }))}
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all"
                   />
                 </div>
