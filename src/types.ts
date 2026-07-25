@@ -53,6 +53,8 @@ export interface DashboardData {
 export interface FgdMinute {
   id: string;
   groupNumber: number;
+  sessionName: string;
+  authorName?: string | null;
   usulanPermasalahan: string;
   problem: string;
   penyebab: string;
@@ -72,4 +74,4 @@ export interface FgdMinute {
   updatedAt: string;
 }
 
-export type PageId = 'public-landing' | 'login' | 'operator-checkin' | 'admin-dashboard' | 'admin-participants' | 'admin-idcard' | 'admin-fgd';
+export type PageId = 'public-landing' | 'login' | 'operator-checkin' | 'admin-dashboard' | 'admin-participants' | 'admin-idcard' | 'admin-fgd' | 'admin-fgd-present';

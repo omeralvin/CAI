@@ -2,6 +2,8 @@ import React, { useState, useRef, useCallback } from 'react';
 import { FgdMinute } from '../types';
 import { Bold, List, ListOrdered } from 'lucide-react';
 
+const SESSION_OPTIONS = ['Sesi 1', 'Sesi 2', 'Sesi 3', 'Sesi 4', 'Sesi 5'];
+
 type FgdFormData = Omit<FgdMinute, 'id' | 'createdAt' | 'updatedAt' | 'groupNumber'>;
 
 interface FgdFormProps {
@@ -12,6 +14,8 @@ interface FgdFormProps {
 }
 
 const emptyForm: FgdFormData = {
+  sessionName: 'Sesi 1',
+  authorName: '',
   usulanPermasalahan: '',
   problem: '',
   penyebab: '',
@@ -103,12 +107,13 @@ function FormatToolbar({ textareaRef }: { textareaRef: React.RefObject<HTMLTextA
   );
 }
 
-function FieldGroup({ label, value, onChange, disabled, rows = 3 }: {
+function FieldGroup({ label, value, onChange, disabled, rows = 3, placeholder }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   disabled?: boolean;
   rows?: number;
+  placeholder?: string;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -122,7 +127,8 @@ function FieldGroup({ label, value, onChange, disabled, rows = 3 }: {
         onChange={e => onChange(e.target.value)}
         disabled={disabled}
         rows={rows}
-        className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-b-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-y disabled:bg-slate-50 disabled:text-slate-500"
+        placeholder={placeholder}
+        className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-b-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-y disabled:bg-slate-50 disabled:text-slate-500 placeholder:text-slate-300"
       />
     </div>
   );
@@ -169,6 +175,38 @@ export const FgdForm: React.FC<FgdFormProps> = ({ groupNumber, initialData, onSu
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Session & Author Info */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+            Pilih Sesi FGD <span className="text-rose-500">*</span>
+          </label>
+          <select
+            value={form.sessionName}
+            onChange={e => update('sessionName', e.target.value)}
+            disabled={disabled}
+            className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all disabled:bg-slate-50 disabled:text-slate-500"
+          >
+            {SESSION_OPTIONS.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+            Nama Notulis / Pengisi <span className="text-slate-400 font-normal">(opsional)</span>
+          </label>
+          <input
+            type="text"
+            value={form.authorName ?? ''}
+            onChange={e => update('authorName', e.target.value)}
+            disabled={disabled}
+            placeholder="Contoh: Ahmad F."
+            className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all disabled:bg-slate-50 disabled:text-slate-500 placeholder:text-slate-300"
+          />
+        </div>
+      </div>
+
       {sectionTitle('USULAN PERMASALAHAN')}
       <FieldGroup
         label="Usulan Permasalahan"
@@ -176,13 +214,14 @@ export const FgdForm: React.FC<FgdFormProps> = ({ groupNumber, initialData, onSu
         onChange={v => update('usulanPermasalahan', v)}
         disabled={disabled}
         rows={4}
+        placeholder="Tuliskan poin-poin usulan permasalahan di sini...&#10;Contoh:&#10;1. Masalah A&#10;2. Masalah B"
       />
 
       {sectionTitle('PROBLEM - PENYEBAB - SOLUSI')}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <FieldGroup label="Problem" value={form.problem} onChange={v => update('problem', v)} disabled={disabled} rows={4} />
-        <FieldGroup label="Penyebab" value={form.penyebab} onChange={v => update('penyebab', v)} disabled={disabled} rows={4} />
-        <FieldGroup label="Solusi" value={form.solusi} onChange={v => update('solusi', v)} disabled={disabled} rows={4} />
+        <FieldGroup label="Problem" value={form.problem} onChange={v => update('problem', v)} disabled={disabled} rows={4} placeholder="Tuliskan problem utama..." />
+        <FieldGroup label="Penyebab" value={form.penyebab} onChange={v => update('penyebab', v)} disabled={disabled} rows={4} placeholder="Tuliskan akar penyebab..." />
+        <FieldGroup label="Solusi" value={form.solusi} onChange={v => update('solusi', v)} disabled={disabled} rows={4} placeholder="Tuliskan usulan solusi..." />
       </div>
 
       {sectionTitle('ACTION PLAN')}
@@ -197,11 +236,11 @@ export const FgdForm: React.FC<FgdFormProps> = ({ groupNumber, initialData, onSu
 
       {sectionTitle('PERAN 5 UNSUR')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FieldGroup label="Peran Keimaman" value={form.peranKeimaman} onChange={v => update('peranKeimaman', v)} disabled={disabled} rows={3} />
-        <FieldGroup label="Peran Pengurus" value={form.peranPengurus} onChange={v => update('peranPengurus', v)} disabled={disabled} rows={3} />
-        <FieldGroup label="Peran Orang Tua" value={form.peranOrangTua} onChange={v => update('peranOrangTua', v)} disabled={disabled} rows={3} />
-        <FieldGroup label="Peran Mubaligh" value={form.peranMubaligh} onChange={v => update('peranMubaligh', v)} disabled={disabled} rows={3} />
-        <FieldGroup label="Peran Ahli Pendidik" value={form.peranAhliPendidik} onChange={v => update('peranAhliPendidik', v)} disabled={disabled} rows={3} />
+        <FieldGroup label="Peran Keimaman" value={form.peranKeimaman} onChange={v => update('peranKeimaman', v)} disabled={disabled} rows={3} placeholder="Tuliskan peran masing-masing unsur di sini..." />
+        <FieldGroup label="Peran Pengurus" value={form.peranPengurus} onChange={v => update('peranPengurus', v)} disabled={disabled} rows={3} placeholder="Tuliskan peran masing-masing unsur di sini..." />
+        <FieldGroup label="Peran Orang Tua" value={form.peranOrangTua} onChange={v => update('peranOrangTua', v)} disabled={disabled} rows={3} placeholder="Tuliskan peran masing-masing unsur di sini..." />
+        <FieldGroup label="Peran Mubaligh" value={form.peranMubaligh} onChange={v => update('peranMubaligh', v)} disabled={disabled} rows={3} placeholder="Tuliskan peran masing-masing unsur di sini..." />
+        <FieldGroup label="Peran Ahli Pendidik" value={form.peranAhliPendidik} onChange={v => update('peranAhliPendidik', v)} disabled={disabled} rows={3} placeholder="Tuliskan peran masing-masing unsur di sini..." />
       </div>
 
       {!disabled && (

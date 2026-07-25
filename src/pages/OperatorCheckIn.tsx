@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { Participant } from '../types';
+import { Participant, AttendanceSession } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   QrCode, 
@@ -72,6 +72,57 @@ export const OperatorCheckIn: React.FC = () => {
 
   const participantsRef = useRef(participants);
   participantsRef.current = participants;
+
+  const userManuallySelected = useRef(false);
+
+  const autoDetectActiveSession = useCallback((sessionsList: AttendanceSession[]): string | null => {
+    const now = new Date();
+    const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
+
+    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const currentDayName = dayNames[now.getDay()];
+    const todayStr = now.toISOString().split('T')[0];
+
+    for (const session of sessionsList) {
+      const sessionDate = session.date ? new Date(session.date).toISOString().split('T')[0] : '';
+      if (sessionDate !== todayStr && session.dayName !== currentDayName) continue;
+
+      const [startH, startM] = session.startTime.split(':').map(Number);
+      const [endH, endM] = session.endTime.split(':').map(Number);
+      const startMinutes = startH * 60 + startM;
+      const endMinutes = endH * 60 + endM;
+
+      if (currentTimeMinutes >= startMinutes && currentTimeMinutes <= endMinutes) {
+        return session.id;
+      }
+    }
+
+    let closestSession: AttendanceSession | null = null;
+    let smallestDiff = Infinity;
+
+    for (const session of sessionsList) {
+      const sessionDate = session.date ? new Date(session.date).toISOString().split('T')[0] : '';
+      if (sessionDate !== todayStr && session.dayName !== currentDayName) continue;
+
+      const [startH, startM] = session.startTime.split(':').map(Number);
+      const startMinutes = startH * 60 + startM;
+      const diff = Math.abs(currentTimeMinutes - startMinutes);
+
+      if (diff < smallestDiff) {
+        smallestDiff = diff;
+        closestSession = session;
+      }
+    }
+
+    return closestSession ? closestSession.id : null;
+  }, []);
+
+  useEffect(() => {
+    if (sessions.length > 0 && !userManuallySelected.current) {
+      const detected = autoDetectActiveSession(sessions);
+      setActiveSessionId(detected);
+    }
+  }, [sessions, setActiveSessionId, autoDetectActiveSession]);
 
   // Fetch sessions on mount
   useEffect(() => {
@@ -247,10 +298,20 @@ export const OperatorCheckIn: React.FC = () => {
   // Calculate quick stats for the operator screen
   const total = participants.length;
   const checkedIn = participants.filter(p => p.isCheckedIn).length;
-  const percent = total > 0 ? Math.round((checkedIn / total) * 100) : 0;
+  const displayCheckedIn = activeSessionId
+    ? new Set(
+        checkInLogs
+          .filter(l => l.sessionId === activeSessionId && (l.status === 'PRESENT' || l.status === 'LATE'))
+          .map(l => l.participantId)
+      ).size
+    : checkedIn;
+  const percent = displayCheckedIn > 0 ? Math.round((displayCheckedIn / total) * 100) : 0;
 
-  // Filter logs only for this operator's shift, or show top recent 6
-  const displayLogs = checkInLogs.slice(0, 6);
+  // Filter logs by active session, or show all
+  const sessionLogs = activeSessionId
+    ? checkInLogs.filter(l => l.sessionId === activeSessionId)
+    : checkInLogs;
+  const displayLogs = sessionLogs.slice(0, 6);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -267,26 +328,6 @@ export const OperatorCheckIn: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-3">
-          {/* Session Selector */}
-          <div className="relative">
-            <div className="flex items-center gap-2 bg-white border border-slate-200/80 px-3 py-2.5 rounded-xl shadow-sm">
-              <Calendar className="h-4 w-4 text-blue-600 shrink-0" />
-              <select
-                value={activeSessionId || ''}
-                onChange={(e) => setActiveSessionId(e.target.value || null)}
-                className="text-xs font-bold text-slate-800 bg-transparent border-none outline-none cursor-pointer appearance-none pr-5 max-w-[200px] truncate"
-              >
-                {sessions.length === 0 && <option value="">Tidak ada sesi</option>}
-                {sessions.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.startTime}–{s.endTime})
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="h-3.5 w-3.5 text-slate-400 absolute right-2 pointer-events-none" />
-            </div>
-          </div>
-
           {/* Operator Badge */}
           <div className="self-start md:self-center bg-white border border-slate-200/80 px-4 py-2.5 rounded-xl shadow-sm flex items-center gap-2">
             <span className="relative flex h-2 w-2">
@@ -295,6 +336,37 @@ export const OperatorCheckIn: React.FC = () => {
             </span>
             <span className="text-xs text-slate-500 font-medium">Operator:</span>
             <span className="text-xs font-bold text-slate-800">{currentUser?.name}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Session Selector - Full Width */}
+      <div className="mb-8">
+        <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm px-6 py-4">
+          <div className="flex items-center gap-4">
+            <Calendar className="h-5 w-5 text-blue-600 shrink-0" />
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Pilih Sesi
+            </span>
+            <div className="relative flex-1">
+              <select
+                value={activeSessionId || ''}
+                onChange={(e) => {
+                  userManuallySelected.current = true;
+                  setActiveSessionId(e.target.value || null);
+                }}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+              >
+                <option value="">Semua Sesi</option>
+                {sessions.length > 0 && sessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    Sesi {s.sessionNumber} ({s.startTime} – {s.endTime})
+                  </option>
+                ))}
+                {sessions.length === 0 && <option value="">Tidak ada sesi</option>}
+              </select>
+              <ChevronDown className="h-4 w-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
           </div>
         </div>
       </div>
@@ -605,7 +677,7 @@ export const OperatorCheckIn: React.FC = () => {
               </span>
             </div>
             <div className="flex items-baseline gap-2 mb-3">
-              <span className="text-3xl font-extrabold text-slate-900 tracking-tight">{checkedIn}</span>
+              <span className="text-3xl font-extrabold text-slate-900 tracking-tight">{displayCheckedIn}</span>
               <span className="text-sm text-slate-400">dari {total} Peserta</span>
             </div>
             
@@ -673,7 +745,7 @@ export const OperatorCheckIn: React.FC = () => {
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                 <History className="h-4 w-4 text-blue-600" />
-                Aktivitas Terakhir Sesi Ini
+                {activeSessionId ? 'Aktivitas Sesi Terpilih' : 'Aktivitas Terbaru'}
               </h3>
             </div>
 

@@ -1,14 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FgdMinute } from '../types';
 import { FgdForm } from '../components/FgdForm';
+import { useApp } from '../context/AppContext';
 import logoWarna from '../../assets/image/logo_warna.png';
 import {
   Table2, FileEdit, Presentation, Download, Trash2, Eye,
-  ChevronDown, Maximize2, Minimize2, FileText, CheckCircle, XCircle, AlertTriangle
+  ChevronDown, Maximize2, Minimize2, FileText, CheckCircle, XCircle, AlertTriangle, Monitor
 } from 'lucide-react';
 
 const API_BASE_URL = 'http://localhost:5050/api';
 const GROUPS = Array.from({ length: 15 }, (_, i) => i + 1);
+const SESSION_OPTIONS = ['Semua Sesi', 'Sesi 1', 'Sesi 2', 'Sesi 3', 'Sesi 4', 'Sesi 5'];
+
+const emptyForm: Omit<FgdMinute, 'id' | 'createdAt' | 'updatedAt' | 'groupNumber'> = {
+  sessionName: 'Sesi 1',
+  authorName: null,
+  usulanPermasalahan: '',
+  problem: '',
+  penyebab: '',
+  solusi: '',
+  actionPlanBidangPpg: '',
+  actionPlanDeskripsi: '',
+  actionPlanNamaKegiatan: '',
+  actionPlanPeserta: '',
+  actionPlanWaktu: '',
+  actionPlanDana: '',
+  peranKeimaman: '',
+  peranPengurus: '',
+  peranOrangTua: '',
+  peranMubaligh: '',
+  peranAhliPendidik: '',
+};
 
 type TabId = 'rekap' | 'input' | 'presentasi';
 
@@ -21,6 +43,7 @@ function getHeaders() {
 }
 
 export const AdminFgd: React.FC = () => {
+  const { setCurrentPage } = useApp();
   const [tab, setTab] = useState<TabId>('rekap');
   const [allData, setAllData] = useState<FgdMinute[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +54,7 @@ export const AdminFgd: React.FC = () => {
   const [presentGroup, setPresentGroup] = useState<number | null>(null);
   const [presentData, setPresentData] = useState<FgdMinute | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [sessionFilter, setSessionFilter] = useState('Semua Sesi');
   const presRef = useRef<HTMLDivElement>(null);
 
   const fetchAll = async () => {
@@ -96,16 +120,10 @@ export const AdminFgd: React.FC = () => {
     }
   };
 
-  const handlePresent = async (groupNumber: number) => {
-    setPresentGroup(groupNumber);
-    setPresentData(null);
-    try {
-      const res = await fetch(`${API_BASE_URL}/notulis/group/${groupNumber}`);
-      if (res.ok) {
-        const d = await res.json();
-        setPresentData(d);
-      }
-    } catch { }
+  const handlePresent = (data: FgdMinute | null) => {
+    if (!data) return;
+    setPresentGroup(data.groupNumber);
+    setPresentData(data);
     setTab('presentasi');
   };
 
@@ -160,8 +178,6 @@ export const AdminFgd: React.FC = () => {
     }
   };
 
-  const getGroupData = (gn: number) => allData.find(d => d.groupNumber === gn);
-
   const tabs: { id: TabId; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'rekap', label: 'Rekap Data', icon: Table2 },
     { id: 'input', label: 'Input / Edit', icon: FileEdit },
@@ -177,6 +193,9 @@ export const AdminFgd: React.FC = () => {
           <p className="text-sm text-slate-500">Kelola data Focus Group Discussion</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setCurrentPage('admin-fgd-present')} className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-1.5">
+            <Monitor className="h-3.5 w-3.5" /> Presentasi Layar Lebar
+          </button>
           <button onClick={handleExportAll} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-1.5">
             <Download className="h-3.5 w-3.5" /> Export All PDF
           </button>
@@ -217,74 +236,82 @@ export const AdminFgd: React.FC = () => {
 
       {/* Tab: Rekap Data */}
       {tab === 'rekap' && (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-4 py-3 font-bold text-slate-600">Grup</th>
-                  <th className="text-left px-3 py-3 font-bold text-slate-600">Usulan Permasalahan</th>
-                  <th className="text-left px-3 py-3 font-bold text-slate-600">Problem</th>
-                  <th className="text-left px-3 py-3 font-bold text-slate-600">Penyebab</th>
-                  <th className="text-left px-3 py-3 font-bold text-slate-600">Solusi</th>
-                  <th className="text-left px-3 py-3 font-bold text-slate-600">Bidang PPG</th>
-                  <th className="text-center px-3 py-3 font-bold text-slate-600">Status</th>
-                  <th className="text-center px-3 py-3 font-bold text-slate-600 w-28">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {GROUPS.map(g => {
-                  const d = getGroupData(g);
-                  return (
-                    <tr key={g} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-                      <td className="px-4 py-3 font-bold text-slate-700">Grup {g}</td>
-                      <td className="px-3 py-3 text-slate-600 max-w-[180px] truncate">{d?.usulanPermasalahan || '-'}</td>
-                      <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d?.problem || '-'}</td>
-                      <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d?.penyebab || '-'}</td>
-                      <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d?.solusi || '-'}</td>
-                      <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d?.actionPlanBidangPpg || '-'}</td>
-                      <td className="px-3 py-3 text-center">
-                        {d ? (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-semibold text-slate-600">Filter Sesi:</label>
+            <select
+              value={sessionFilter}
+              onChange={e => setSessionFilter(e.target.value)}
+              className="px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 outline-none"
+            >
+              {SESSION_OPTIONS.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left px-4 py-3 font-bold text-slate-600">Grup</th>
+                    <th className="text-left px-3 py-3 font-bold text-slate-600">Sesi</th>
+                    <th className="text-left px-3 py-3 font-bold text-slate-600">Penulis</th>
+                    <th className="text-left px-3 py-3 font-bold text-slate-600">Usulan Permasalahan</th>
+                    <th className="text-left px-3 py-3 font-bold text-slate-600">Problem</th>
+                    <th className="text-left px-3 py-3 font-bold text-slate-600">Penyebab</th>
+                    <th className="text-left px-3 py-3 font-bold text-slate-600">Solusi</th>
+                    <th className="text-left px-3 py-3 font-bold text-slate-600">Bidang PPG</th>
+                    <th className="text-center px-3 py-3 font-bold text-slate-600">Status</th>
+                    <th className="text-center px-3 py-3 font-bold text-slate-600 w-28">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {GROUPS.flatMap(g => {
+                    const rows = sessionFilter === 'Semua Sesi'
+                      ? allData.filter(d => d.groupNumber === g)
+                      : allData.filter(d => d.groupNumber === g && d.sessionName === sessionFilter);
+
+                    if (rows.length === 0) {
+                      return (
+                        <tr key={g} className="border-b border-slate-100 bg-slate-50/50">
+                          <td className="px-4 py-3 font-bold text-slate-700">Grup {g}</td>
+                          <td className="px-3 py-3 text-slate-400" colSpan={9}>Belum ada data</td>
+                        </tr>
+                      );
+                    }
+
+                    return rows.map(d => (
+                      <tr key={`${g}-${d.sessionName}`} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-3 font-bold text-slate-700">Grup {g}</td>
+                        <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{d.sessionName}</td>
+                        <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{d.authorName || '-'}</td>
+                        <td className="px-3 py-3 text-slate-600 max-w-[180px] truncate">{d.usulanPermasalahan || '-'}</td>
+                        <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d.problem || '-'}</td>
+                        <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d.penyebab || '-'}</td>
+                        <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d.solusi || '-'}</td>
+                        <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d.actionPlanBidangPpg || '-'}</td>
+                        <td className="px-3 py-3 text-center">
                           <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] font-semibold">
                             <CheckCircle className="h-3 w-3" /> Terisi
                           </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full text-[10px] font-semibold">
-                            <XCircle className="h-3 w-3" /> Kosong
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => d && handleEdit(d)}
-                            disabled={!d}
-                            className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 disabled:text-slate-300 disabled:hover:bg-transparent transition-colors"
-                            title="Edit"
-                          >
-                            <FileEdit className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handlePresent(g)}
-                            disabled={!d}
-                            className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-600 disabled:text-slate-300 disabled:hover:bg-transparent transition-colors"
-                            title="Presentasi"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => d && setDeleteConfirm(d.id)}
-                            disabled={!d}
-                            className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 disabled:text-slate-300 disabled:hover:bg-transparent transition-colors"
-                            title="Hapus"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={() => handleEdit(d)} className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors" title="Edit">
+                              <FileEdit className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => handlePresent(d)} className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-600 transition-colors" title="Presentasi">
+                              <Eye className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => setDeleteConfirm(d.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 transition-colors" title="Hapus">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ));
+                  })}
               </tbody>
             </table>
           </div>
@@ -294,6 +321,7 @@ export const AdminFgd: React.FC = () => {
               <p className="text-sm font-medium">Belum ada data notulis yang diinput</p>
             </div>
           )}
+          </div>
         </div>
       )}
 
@@ -301,33 +329,49 @@ export const AdminFgd: React.FC = () => {
       {tab === 'input' && (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 sm:p-6">
           <div className="mb-5 pb-3 border-b border-slate-100">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Pilih Grup</label>
-            <div className="relative max-w-xs">
-              <select
-                value={selectedGroup ?? ''}
-                onChange={e => {
-                  const gn = e.target.value ? parseInt(e.target.value) : null;
-                  setSelectedGroup(gn);
-                  if (gn) {
-                    const existing = getGroupData(gn);
-                    setEditData(existing || null);
-                  } else {
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Pilih Grup & Sesi</label>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <select
+                  value={selectedGroup ?? ''}
+                  onChange={e => {
+                    const gn = e.target.value ? parseInt(e.target.value) : null;
+                    setSelectedGroup(gn);
                     setEditData(null);
-                  }
-                }}
-                className="w-full appearance-none px-4 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-              >
-                <option value="">-- Pilih Grup --</option>
-                {GROUPS.map(g => (
-                  <option key={g} value={g}>Grup {g}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                  }}
+                  className="w-full appearance-none px-4 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                >
+                  <option value="">-- Pilih Grup --</option>
+                  {GROUPS.map(g => (
+                    <option key={g} value={g}>Grup {g}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+              </div>
+              <div className="relative flex-1">
+                <select
+                  value={editData?.sessionName ?? 'Sesi 1'}
+                  onChange={e => {
+                    const session = e.target.value;
+                    if (selectedGroup !== null) {
+                      const existing = allData.find(d => d.groupNumber === selectedGroup && d.sessionName === session);
+                      setEditData(existing || { ...emptyForm, sessionName: session });
+                    }
+                  }}
+                  className="w-full appearance-none px-4 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  disabled={selectedGroup === null}
+                >
+                  {SESSION_OPTIONS.filter(s => s !== 'Semua Sesi').map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+              </div>
             </div>
           </div>
           {selectedGroup !== null ? (
             <FgdForm
-              key={selectedGroup}
+              key={`${selectedGroup}-${editData?.sessionName ?? 'Sesi 1'}`}
               groupNumber={selectedGroup}
               initialData={editData}
               onSubmit={handleSubmitForm}
@@ -353,7 +397,10 @@ export const AdminFgd: React.FC = () => {
                   onChange={e => {
                     const gn = e.target.value ? parseInt(e.target.value) : null;
                     setPresentGroup(gn);
-                    if (gn) handlePresent(gn);
+                    if (gn) {
+                      const data = allData.find(d => d.groupNumber === gn) ?? null;
+                      handlePresent(data);
+                    }
                   }}
                   className="appearance-none px-4 py-2 pr-10 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                 >
@@ -383,10 +430,11 @@ export const AdminFgd: React.FC = () => {
               <div className="space-y-6">
                 <div className="text-center border-b-2 border-blue-600 pb-4 mb-4">
                   <h2 className="text-2xl sm:text-3xl font-bold text-blue-800">
-                    FGD — Grup {presentData.groupNumber}
+                    FGD — Grup {presentData.groupNumber} — {presentData.sessionName}
                   </h2>
                   <p className="text-sm text-slate-500 mt-1">
                     Cinta Alam Indonesia
+                    {presentData.authorName && <span className="ml-3 text-slate-400">| Notulis: {presentData.authorName}</span>}
                   </p>
                 </div>
 

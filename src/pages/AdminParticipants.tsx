@@ -31,19 +31,10 @@ import {
   Volume2,
 } from 'lucide-react';
 
-const GROUP_OPTIONS = [
-  'Kelompok Semeru',
-  'Kelompok Rinjani',
-  'Kelompok Merbabu',
-  'Kelompok Bromo',
-  'Panitia',
-  'Tamu Undangan',
-];
-
-const SAMPLE_CSV = `CAI-2026-101,Rizky Pratama,25,L,Kelompok Semeru,Surabaya,58C3FA2C
-CAI-2026-102,Dewi Lestari,28,P,Kelompok Bromo,Sidoarjo,8A9B10C2
-CAI-2026-103,Bambang Pamungkas,30,L,Kelompok Rinjani,Malang,4E5F6D7B
-CAI-2026-104,Siti Aminah,24,P,Kelompok Merbabu,Gresik,1D2E3F4A`;
+const SAMPLE_CSV = `Rizky Pratama,25,L,Desa Karangrejo,KI Desa
+Dewi Lestari,28,P,Desa Sumbermulyo,MT Desa
+Bambang Pamungkas,30,L,Desa Tegalrejo,Panitia
+Siti Aminah,24,P,Desa Wonorejo,KI Desa`;
 
 export const AdminParticipants: React.FC = () => {
   const {
@@ -56,6 +47,7 @@ export const AdminParticipants: React.FC = () => {
     updateParticipant,
     importParticipants,
     registerRfid,
+    resetAllAttendance,
   } = useApp();
 
   useEffect(() => {
@@ -78,7 +70,7 @@ export const AdminParticipants: React.FC = () => {
     name: '',
     age: '',
     gender: 'L' as 'L' | 'P',
-    group: 'Kelompok Semeru',
+    group: '',
     origin: '',
     rfidCardId: '',
   });
@@ -103,6 +95,14 @@ export const AdminParticipants: React.FC = () => {
   const massPairInputRef = useRef<HTMLInputElement>(null);
   const [massPairMessage, setMassPairMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [massPairDone, setMassPairDone] = useState(false);
+
+  const [isResetOpen, setIsResetOpen] = useState(false);
+  const [resetConfirmValue, setResetConfirmValue] = useState('');
+  const [resetStatus, setResetStatus] = useState<'idle' | 'loading' | 'done'>('idle');
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBatchDeleteOpen, setIsBatchDeleteOpen] = useState(false);
+  const [batchDeleteStatus, setBatchDeleteStatus] = useState<'idle' | 'loading' | 'done'>('idle');
 
   const sortedSessions = useMemo(
     () =>
@@ -150,22 +150,53 @@ export const AdminParticipants: React.FC = () => {
     });
   }, [participants, searchQuery, statusFilter, groupFilter]);
 
+  const allFilteredIds = useMemo(() => filteredParticipants.map(p => p.id), [filteredParticipants]);
+
+  const isAllSelected = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedIds.has(id));
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allFilteredIds));
+    }
+  };
+
+  const generateNextId = useCallback(() => {
+    const year = new Date().getFullYear().toString();
+    let maxNum = 0;
+    participants.forEach(p => {
+      const match = p.id.match(/^CAI-(\d{4})-(\d+)$/);
+      if (match && match[1] === year) {
+        const num = parseInt(match[2], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `CAI-${year}-${String(maxNum + 1).padStart(3, '0')}`;
+  }, [participants]);
+
+  const autoId = generateNextId();
+
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddError('');
-    if (!newParticipant.id.trim()) {
-      setAddError('ID Peserta wajib diisi!');
-      return;
-    }
     if (!newParticipant.name.trim()) {
       setAddError('Nama Peserta wajib diisi!');
       return;
     }
     if (!newParticipant.origin.trim()) {
-      setAddError('Kota Asal wajib diisi!');
+      setAddError('Keterangan wajib diisi!');
       return;
     }
-    const formattedId = newParticipant.id.trim().toUpperCase();
+    const formattedId = generateNextId();
     const ageVal = newParticipant.age.trim() ? parseInt(newParticipant.age.trim(), 10) : null;
     const success = await addParticipant({
       id: formattedId,
@@ -178,9 +209,9 @@ export const AdminParticipants: React.FC = () => {
     });
     if (success) {
       setIsAddOpen(false);
-      setNewParticipant({ id: '', name: '', age: '', gender: 'L', group: 'Kelompok Semeru', origin: '', rfidCardId: '' });
+      setNewParticipant({ id: '', name: '', age: '', gender: 'L', group: '', origin: '', rfidCardId: '' });
     } else {
-      setAddError(`ID Peserta "${formattedId}" sudah terdaftar di sistem!`);
+      setAddError(`Gagal menyimpan peserta. Mungkin duplikasi data atau kesalahan server.`);
     }
   };
 
@@ -213,17 +244,15 @@ export const AdminParticipants: React.FC = () => {
       if (!cleanLine) return;
       const columns = cleanLine.split(',');
       if (columns.length >= 5) {
-        const id = columns[0].trim().toUpperCase();
-        const name = columns[1].trim();
-        const ageRaw = columns[2].trim();
+        const name = columns[0].trim();
+        const ageRaw = columns[1].trim();
         const age = ageRaw && !isNaN(parseInt(ageRaw, 10)) ? parseInt(ageRaw, 10) : null;
-        const genderRaw = columns[3].trim().toUpperCase();
-        const group = columns[4].trim();
-        const origin = columns[5] ? columns[5].trim() : '';
-        const rfidCardId = columns[6] ? columns[6].trim().toUpperCase() : null;
+        const genderRaw = columns[2].trim().toUpperCase();
+        const group = columns[3].trim();
+        const origin = columns[4] ? columns[4].trim() : '';
         const gender = genderRaw === 'P' || genderRaw === 'PEREMPUAN' ? 'P' : 'L';
-        if (id && name && group && origin) {
-          parsedList.push({ id, name, age, gender, group, origin, rfidCardId });
+        if (name && group && origin) {
+          parsedList.push({ id: '', name, age, gender, group, origin });
         } else {
           lineErrors++;
         }
@@ -241,7 +270,20 @@ export const AdminParticipants: React.FC = () => {
 
   const handleExecuteImport = async () => {
     if (importPreview.length === 0) return;
-    const importedCount = await importParticipants(importPreview);
+    const year = new Date().getFullYear().toString();
+    let maxNum = 0;
+    participants.forEach(p => {
+      const match = p.id.match(/^CAI-(\d{4})-(\d+)$/);
+      if (match && match[1] === year) {
+        const num = parseInt(match[2], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    const dataWithIds = importPreview.map((item, i) => ({
+      ...item,
+      id: `CAI-${year}-${String(maxNum + 1 + i).padStart(3, '0')}`,
+    }));
+    const importedCount = await importParticipants(dataWithIds);
     const skippedCount = importPreview.length - importedCount;
     setImportSuccessMsg(`Berhasil mengimpor ${importedCount} peserta baru.`);
     if (skippedCount > 0)
@@ -406,6 +448,29 @@ export const AdminParticipants: React.FC = () => {
             <Plus className="h-4 w-4" />
             Tambah Peserta
           </button>
+          <button
+            onClick={() => {
+              setIsResetOpen(true);
+              setResetConfirmValue('');
+              setResetStatus('idle');
+            }}
+            className="px-4 py-2.5 bg-white border border-rose-200 text-rose-600 text-xs font-bold rounded-xl hover:bg-rose-50 transition-all flex items-center gap-1.5 active:scale-95 shadow-sm cursor-pointer"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Reset Data
+          </button>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => {
+                setIsBatchDeleteOpen(true);
+                setBatchDeleteStatus('idle');
+              }}
+              className="px-4 py-2.5 bg-rose-600 text-white text-xs font-bold rounded-xl hover:bg-rose-500 transition-all flex items-center gap-1.5 active:scale-95 shadow-md shadow-rose-700/10 cursor-pointer"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Hapus {selectedIds.size} Terpilih
+            </button>
+          )}
         </div>
       </div>
 
@@ -419,7 +484,7 @@ export const AdminParticipants: React.FC = () => {
             </div>
             <input
               type="text"
-              placeholder="Cari berdasarkan ID, nama, atau kota asal..."
+              placeholder="Cari berdasarkan ID, nama, desa, atau keterangan..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -480,24 +545,32 @@ export const AdminParticipants: React.FC = () => {
       {/* ── Main Table ── */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200/80">
+          <table className="min-w-full table-fixed divide-y divide-slate-200/80">
             <thead className="bg-slate-50/75">
               <tr>
+                <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider w-10">
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                </th>
                 <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider w-12">No</th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Nama Peserta</th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">ID Card</th>
-                <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider">Umur</th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gender</th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Kelompok / Desa</th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status Absensi</th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Keterangan</th>
-                <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider">Aksi</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[22%]">Nama Peserta</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[13%]">ID Card</th>
+                <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[6%]">Umur</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[11%]">Gender</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[14%]">Kelompok / Desa</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[13%]">Status Absensi</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[11%]">Keterangan</th>
+                <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[15%]">Aksi</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-100 text-sm">
               {filteredParticipants.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-slate-400 text-xs font-medium">
+                  <td colSpan={10} className="px-6 py-12 text-center text-slate-400 text-xs font-medium">
                     Tidak ada data peserta ditemukan yang sesuai dengan kriteria filter.
                   </td>
                 </tr>
@@ -507,20 +580,33 @@ export const AdminParticipants: React.FC = () => {
                     ? getSessionStatus(p.id, selectedSessionId)
                     : null;
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50/40 transition-colors">
+                    <tr key={p.id} className={`transition-colors ${
+                      p.origin?.toLowerCase().includes('panitia')
+                        ? 'bg-amber-50/40 hover:bg-amber-100/50'
+                        : 'hover:bg-slate-50/40'
+                    }`}>
+                      {/* Checkbox */}
+                      <td className="px-4 py-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(p.id)}
+                          onChange={() => toggleSelect(p.id)}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </td>
                       {/* No */}
                       <td className="px-4 py-3.5 text-center text-xs font-bold text-slate-400">
                         {idx + 1}
                       </td>
 
                       {/* Nama */}
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <div className="font-bold text-slate-900 text-sm">{p.name}</div>
-                        <div className="text-[10px] font-mono text-slate-400 mt-0.5">{p.id}</div>
+                      <td className="px-4 py-3.5 truncate max-w-0">
+                        <div className="font-bold text-slate-900 text-sm truncate">{p.name}</div>
+                        <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">{p.id}</div>
                       </td>
 
                       {/* ID CARD (RFID UID) */}
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
+                      <td className="px-4 py-3.5 truncate text-xs">
                         {p.rfidCardId ? (
                           <span className="inline-flex items-center gap-1.5 bg-blue-50/60 text-blue-700 border border-blue-100/60 px-2.5 py-1 rounded-lg font-mono font-bold">
                             <span className="relative flex h-1.5 w-1.5">
@@ -557,12 +643,12 @@ export const AdminParticipants: React.FC = () => {
                       </td>
 
                       {/* Kelompok / Desa */}
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs font-bold text-slate-600">
-                        {p.group}
+                      <td className="px-4 py-3.5 truncate text-xs font-bold text-slate-600">
+                        <span className="truncate block">{p.group}</span>
                       </td>
 
                       {/* Status Absensi (session-aware) */}
-                      <td className="px-4 py-3.5 whitespace-nowrap">
+                      <td className="px-4 py-3.5 truncate">
                         {sessionStatus ? (
                           sessionStatus.status === 'Hadir' ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
@@ -594,7 +680,7 @@ export const AdminParticipants: React.FC = () => {
                       </td>
 
                       {/* Keterangan */}
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs font-semibold">
+                      <td className="px-4 py-3.5 truncate text-xs font-semibold">
                         {sessionStatus ? (
                           sessionStatus.status === 'Hadir' ? (
                             <span className="text-emerald-700 flex items-center gap-1">
@@ -615,7 +701,7 @@ export const AdminParticipants: React.FC = () => {
                       </td>
 
                       {/* Aksi */}
-                      <td className="px-4 py-3.5 whitespace-nowrap text-center text-xs font-medium">
+                      <td className="px-4 py-3.5 text-center text-xs font-medium">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => openRecapModal(p)}
@@ -684,15 +770,10 @@ export const AdminParticipants: React.FC = () => {
                 )}
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">ID Registrasi Peserta</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: CAI-2026-016"
-                    value={newParticipant.id}
-                    onChange={(e) => setNewParticipant((prev) => ({ ...prev, id: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-mono bg-white text-slate-900"
-                  />
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">ID Registrasi (Auto-generated)</label>
+                  <div className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-700 select-all">
+                    {autoId}
+                  </div>
                 </div>
 
                 <div>
@@ -749,26 +830,23 @@ export const AdminParticipants: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kelompok Kegiatan</label>
-                  <select
-                    value={newParticipant.group}
-                    onChange={(e) => setNewParticipant((prev) => ({ ...prev, group: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none font-bold bg-white"
-                  >
-                    {GROUP_OPTIONS.map((g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kota / Daerah Asal</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kelompok / Desa</label>
                   <input
                     type="text"
                     required
-                    placeholder="Contoh: Nganjuk"
+                    placeholder="Contoh: Desa Karangrejo"
+                    value={newParticipant.group}
+                    onChange={(e) => setNewParticipant((prev) => ({ ...prev, group: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Keterangan</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: KI Desa, MT Desa"
                     value={newParticipant.origin}
                     onChange={(e) => setNewParticipant((prev) => ({ ...prev, origin: e.target.value }))}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
@@ -900,25 +978,23 @@ export const AdminParticipants: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kelompok</label>
-                  <select
-                    value={editingParticipant.group}
-                    onChange={(e) => setEditingParticipant((prev) => (prev ? { ...prev, group: e.target.value } : null))}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
-                  >
-                    {GROUP_OPTIONS.map((g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kota Asal</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kelompok / Desa</label>
                   <input
                     type="text"
                     required
+                    placeholder="Contoh: Desa Karangrejo"
+                    value={editingParticipant.group}
+                    onChange={(e) => setEditingParticipant((prev) => (prev ? { ...prev, group: e.target.value } : null))}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Keterangan</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: KI Desa, MT Desa"
                     value={editingParticipant.origin}
                     onChange={(e) => setEditingParticipant((prev) => (prev ? { ...prev, origin: e.target.value } : null))}
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900"
@@ -1010,10 +1086,10 @@ export const AdminParticipants: React.FC = () => {
                     Panduan Format Impor Teks Comma-Separated (CSV)
                   </p>
                   <p className="leading-relaxed mb-3 text-slate-600 font-medium">
-                    Tempel data baris baru dengan struktur kolom dipisahkan koma berikut (kolom ke-3 Umur, kolom ke-7 RFID opsional):
+                    Tempel data baris baru dengan struktur kolom dipisahkan koma berikut (ID dihasilkan otomatis oleh sistem):
                     <br />
                     <code className="font-bold font-mono bg-blue-100/75 px-1 py-0.5 rounded text-blue-950">
-                      ID_PESERTA,NAMA_LENGKAP,UMUR,GENDER(L/P),KELOMPOK,KOTA_ASAL,RFID_CARD(Opsional)
+                      NAMA_LENGKAP,UMUR,GENDER(L/P),KELOMPOK_DESA,KETERANGAN
                     </code>
                   </p>
                   <div className="bg-white p-2.5 rounded-lg border border-blue-200 font-mono text-[10px] text-slate-600 relative">
@@ -1070,30 +1146,28 @@ export const AdminParticipants: React.FC = () => {
                       Pratinjau Data yang Siap Diimpor
                     </div>
                     <div className="max-h-40 overflow-y-auto">
-                      <table className="min-w-full divide-y divide-slate-200 text-[11px] text-left text-slate-600">
-                        <thead className="bg-slate-100">
-                          <tr>
-                            <th className="p-2">ID</th>
-                            <th className="p-2">Nama</th>
-                            <th className="p-2">Umur</th>
-                            <th className="p-2">Gender</th>
-                            <th className="p-2">RFID Card</th>
-                            <th className="p-2">Kelompok</th>
-                            <th className="p-2">Asal</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                          {importPreview.map((item, index) => (
-                            <tr key={index} className="hover:bg-slate-50">
-                              <td className="p-2 font-mono font-bold text-slate-800">{item.id}</td>
-                              <td className="p-2 font-bold text-slate-900">{item.name}</td>
-                              <td className="p-2 font-mono">{item.age ?? '-'}</td>
-                              <td className="p-2">{item.gender}</td>
-                              <td className="p-2 font-mono text-blue-700 font-bold">{item.rfidCardId || '-'}</td>
-                              <td className="p-2">{item.group}</td>
-                              <td className="p-2">{item.origin}</td>
-                            </tr>
-                          ))}
+                          <table className="min-w-full divide-y divide-slate-200 text-[11px] text-left text-slate-600">
+                            <thead className="bg-slate-100">
+                              <tr>
+                                <th className="p-2">#</th>
+                                <th className="p-2">Nama</th>
+                                <th className="p-2">Umur</th>
+                                <th className="p-2">Gender</th>
+                                <th className="p-2">Kelompok</th>
+                                <th className="p-2">Keterangan</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                              {importPreview.map((item, index) => (
+                                <tr key={index} className="hover:bg-slate-50">
+                                  <td className="p-2 font-mono font-bold text-slate-400">{index + 1}</td>
+                                  <td className="p-2 font-bold text-slate-900">{item.name}</td>
+                                  <td className="p-2 font-mono">{item.age ?? '-'}</td>
+                                  <td className="p-2">{item.gender}</td>
+                                  <td className="p-2">{item.group}</td>
+                                  <td className="p-2">{item.origin}</td>
+                                </tr>
+                              ))}
                         </tbody>
                       </table>
                     </div>
@@ -1156,7 +1230,7 @@ export const AdminParticipants: React.FC = () => {
                 {!otsSelectedParticipant ? (
                   <>
                     <p className="text-xs text-slate-500 font-medium">
-                      Cari peserta berdasarkan nama, ID, atau kota asal, lalu tap kartu RFID.
+                      Cari peserta berdasarkan nama, ID, atau keterangan, lalu tap kartu RFID.
                     </p>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -1562,6 +1636,213 @@ export const AdminParticipants: React.FC = () => {
                 >
                   Tutup
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL 7: BATCH DELETE PARTICIPANTS
+         ═══════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {isBatchDeleteOpen && (
+          <div className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-slate-200 overflow-hidden text-slate-900"
+            >
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-rose-50/50">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  <Trash2 className="h-4.5 w-4.5 text-rose-600" />
+                  Hapus {selectedIds.size} Peserta
+                </h3>
+                <button
+                  onClick={() => { setIsBatchDeleteOpen(false); setBatchDeleteStatus('idle'); }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {batchDeleteStatus === 'done' ? (
+                  <div className="text-center py-6">
+                    <CheckCircle className="h-14 w-14 text-emerald-400 mx-auto mb-3" />
+                    <p className="text-sm font-bold text-slate-800">Berhasil dihapus!</p>
+                    <p className="text-xs text-slate-500 mt-1">{selectedIds.size} peserta telah dihapus dari sistem.</p>
+                    <button
+                      onClick={() => { setIsBatchDeleteOpen(false); setBatchDeleteStatus('idle'); setSelectedIds(new Set()); }}
+                      className="mt-5 px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer transition-all active:scale-95"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-2">
+                      <p className="font-bold flex items-center gap-1.5">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        Peringatan!
+                      </p>
+                      <p className="leading-relaxed text-rose-800">
+                        Anda akan menghapus <strong>{selectedIds.size} peserta</strong> berikut secara permanen:
+                      </p>
+                      <ul className="max-h-32 overflow-y-auto space-y-1">
+                        {filteredParticipants
+                          .filter(p => selectedIds.has(p.id))
+                          .map(p => (
+                            <li key={p.id} className="flex items-center gap-2 text-rose-800">
+                              <XCircle className="h-3 w-3 shrink-0 text-rose-400" />
+                              <span className="font-semibold">{p.name}</span>
+                              <span className="font-mono text-rose-500">({p.id})</span>
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+
+                    <div className="flex gap-2.5">
+                      <button
+                        onClick={() => { setIsBatchDeleteOpen(false); setBatchDeleteStatus('idle'); }}
+                        className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-all active:scale-95"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        disabled={batchDeleteStatus === 'loading'}
+                        onClick={async () => {
+                          setBatchDeleteStatus('loading');
+                          try {
+                            const ids = Array.from(selectedIds);
+                            await Promise.all(ids.map(id => deleteParticipant(id)));
+                            setBatchDeleteStatus('done');
+                          } catch {
+                            setBatchDeleteStatus('idle');
+                          }
+                        }}
+                        className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 disabled:bg-rose-300 text-white text-xs font-bold rounded-xl cursor-pointer disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        {batchDeleteStatus === 'loading' ? (
+                          <>
+                            <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                            </svg>
+                            Menghapus...
+                          </>
+                        ) : 'Hapus Peserta'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL 8: RESET ALL DATA (safe confirmation)
+         ═══════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {isResetOpen && (
+          <div className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-slate-200 overflow-hidden text-slate-900"
+            >
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-rose-50/50">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  <AlertTriangle className="h-4.5 w-4.5 text-rose-600" />
+                  Reset Semua Data
+                </h3>
+                <button
+                  onClick={() => { setIsResetOpen(false); setResetStatus('idle'); }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {resetStatus === 'done' ? (
+                  <div className="text-center py-6">
+                    <CheckCircle className="h-14 w-14 text-emerald-400 mx-auto mb-3" />
+                    <p className="text-sm font-bold text-slate-800">Data berhasil di-reset!</p>
+                    <p className="text-xs text-slate-500 mt-1">Semua data absensi dan log telah dikosongkan.</p>
+                    <button
+                      onClick={() => { setIsResetOpen(false); setResetStatus('idle'); }}
+                      className="mt-5 px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer transition-all active:scale-95"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-2">
+                      <p className="font-bold flex items-center gap-1.5">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        Peringatan!
+                      </p>
+                      <p className="leading-relaxed text-rose-800">
+                        Tindakan ini akan <strong>menghapus seluruh data absensi</strong> (status kehadiran, log check-in) 
+                        untuk semua peserta. Data peserta itu sendiri tidak akan dihapus.
+                      </p>
+                      <p className="font-semibold text-rose-800">Tindakan ini tidak dapat dibatalkan.</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                        Ketik <span className="text-rose-600 underline underline-offset-2">RESET</span> untuk konfirmasi
+                      </label>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder='Ketik "RESET" di sini...'
+                        value={resetConfirmValue}
+                        onChange={(e) => setResetConfirmValue(e.target.value)}
+                        className="w-full px-3.5 py-2.5 border border-rose-300 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white text-slate-900 text-center font-bold tracking-widest uppercase"
+                      />
+                    </div>
+
+                    <div className="flex gap-2.5">
+                      <button
+                        onClick={() => { setIsResetOpen(false); setResetStatus('idle'); }}
+                        className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-all active:scale-95"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        disabled={resetConfirmValue !== 'RESET' || resetStatus === 'loading'}
+                        onClick={async () => {
+                          if (resetConfirmValue !== 'RESET') return;
+                          setResetStatus('loading');
+                          try {
+                            await resetAllAttendance();
+                            setResetStatus('done');
+                          } catch {
+                            setResetStatus('idle');
+                          }
+                        }}
+                        className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 disabled:bg-rose-300 text-white text-xs font-bold rounded-xl cursor-pointer disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        {resetStatus === 'loading' ? (
+                          <>
+                            <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                            </svg>
+                            Memproses...
+                          </>
+                        ) : 'Reset Data'}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>

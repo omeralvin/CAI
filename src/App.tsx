@@ -13,6 +13,7 @@ import { AdminParticipants } from './pages/AdminParticipants';
 import { AdminIdCard } from './pages/AdminIdCard';
 import { PublicLanding } from './pages/PublicLanding';
 import { AdminFgd } from './pages/AdminFgd';
+import { AdminFgdPresent } from './pages/AdminFgdPresent';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AppContent() {
@@ -50,10 +51,17 @@ function AppContent() {
         return <AdminIdCard />;
       case 'admin-fgd':
         return <AdminFgd />;
+      case 'admin-fgd-present':
+        return <AdminFgdPresent />;
       default:
         return <AdminDashboard />;
     }
   };
+
+  // Fullscreen presentation mode — no sidebar, no footer
+  if (currentPage === 'admin-fgd-present') {
+    return <AdminFgdPresent />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans">
