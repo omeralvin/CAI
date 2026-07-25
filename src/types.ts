@@ -74,4 +74,4 @@ export interface FgdMinute {
   updatedAt: string;
 }
 
-export type PageId = 'public-landing' | 'login' | 'operator-checkin' | 'admin-dashboard' | 'admin-participants' | 'admin-idcard' | 'admin-fgd' | 'admin-fgd-present';
+export type PageId = 'public-landing' | 'login' | 'operator-checkin' | 'admin-dashboard' | 'admin-participants' | 'admin-idcard' | 'admin-fgd' | 'admin-fgd-present' | 'admin-fgd-print';

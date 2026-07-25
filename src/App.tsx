@@ -14,6 +14,7 @@ import { AdminIdCard } from './pages/AdminIdCard';
 import { PublicLanding } from './pages/PublicLanding';
 import { AdminFgd } from './pages/AdminFgd';
 import { AdminFgdPresent } from './pages/AdminFgdPresent';
+import { AdminFgdPrint } from './pages/AdminFgdPrint';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AppContent() {
@@ -53,6 +54,8 @@ function AppContent() {
         return <AdminFgd />;
       case 'admin-fgd-present':
         return <AdminFgdPresent />;
+      case 'admin-fgd-print':
+        return <AdminFgdPrint />;
       default:
         return <AdminDashboard />;
     }
@@ -61,6 +64,9 @@ function AppContent() {
   // Fullscreen presentation mode — no sidebar, no footer
   if (currentPage === 'admin-fgd-present') {
     return <AdminFgdPresent />;
+  }
+  if (currentPage === 'admin-fgd-print') {
+    return <AdminFgdPrint />;
   }
 
   return (
