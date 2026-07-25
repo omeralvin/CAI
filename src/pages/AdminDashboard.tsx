@@ -118,6 +118,7 @@ export const AdminDashboard: React.FC = () => {
         dayName: editForm.dayName,
         date: editForm.date,
         startTime: editForm.startTime,
+        endTime: editForm.endTime,
         sessionNumber: editForm.sessionNumber,
       });
       if (success) {

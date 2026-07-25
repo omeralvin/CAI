@@ -50,4 +50,26 @@ export interface DashboardData {
   groupStats: { group: string; total: number; present: number; absent: number; late: number; percent: number }[];
 }
 
-export type PageId = 'login' | 'operator-checkin' | 'admin-dashboard' | 'admin-participants' | 'admin-idcard';
+export interface FgdMinute {
+  id: string;
+  groupNumber: number;
+  usulanPermasalahan: string;
+  problem: string;
+  penyebab: string;
+  solusi: string;
+  actionPlanBidangPpg: string;
+  actionPlanDeskripsi: string;
+  actionPlanNamaKegiatan: string;
+  actionPlanPeserta: string;
+  actionPlanWaktu: string;
+  actionPlanDana: string;
+  peranKeimaman: string;
+  peranPengurus: string;
+  peranOrangTua: string;
+  peranMubaligh: string;
+  peranAhliPendidik: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PageId = 'public-landing' | 'login' | 'operator-checkin' | 'admin-dashboard' | 'admin-participants' | 'admin-idcard' | 'admin-fgd';

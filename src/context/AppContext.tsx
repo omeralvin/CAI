@@ -104,7 +104,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setCurrentPage('login');
         }
       } else {
-        setCurrentPage('login');
+        setCurrentPage('public-landing');
       }
     };
 

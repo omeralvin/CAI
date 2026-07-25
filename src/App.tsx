@@ -11,13 +11,17 @@ import { OperatorCheckIn } from './pages/OperatorCheckIn';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { AdminParticipants } from './pages/AdminParticipants';
 import { AdminIdCard } from './pages/AdminIdCard';
+import { PublicLanding } from './pages/PublicLanding';
+import { AdminFgd } from './pages/AdminFgd';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AppContent() {
   const { currentUser, currentPage } = useApp();
 
-  // If there's no user logged in or we are on login page, force login screen
-  if (!currentUser || currentPage === 'login') {
+  if (!currentUser) {
+    if (currentPage === 'public-landing') {
+      return <PublicLanding />;
+    }
     return (
       <AnimatePresence mode="wait">
         <motion.div
@@ -44,6 +48,8 @@ function AppContent() {
         return <AdminParticipants />;
       case 'admin-idcard':
         return <AdminIdCard />;
+      case 'admin-fgd':
+        return <AdminFgd />;
       default:
         return <AdminDashboard />;
     }

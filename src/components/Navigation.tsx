@@ -14,7 +14,8 @@ import {
   Sliders,
   Shield,
   Clock,
-  CreditCard
+  CreditCard,
+  FileText
 } from 'lucide-react';
 import logoImg from '../../assets/image/logo_cai_putih.png';
 
@@ -54,6 +55,13 @@ export const Navigation: React.FC = () => {
       icon: CreditCard,
       roles: ['admin'],
       description: 'Generate & download ID card'
+    },
+    {
+      id: 'admin-fgd' as PageId,
+      label: 'Notulis FGD',
+      icon: FileText,
+      roles: ['admin'],
+      description: 'FGD Minutes & Reports'
     }
   ].filter(item => item.roles.includes(role));
 

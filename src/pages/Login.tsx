@@ -5,7 +5,7 @@ import { ArrowRight, CheckCircle2, User, Lock } from 'lucide-react';
 import logoImg from '../../assets/image/logo_warna.png';
 
 export const Login: React.FC = () => {
-  const { login } = useApp();
+  const { login, setCurrentPage } = useApp();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -124,7 +124,15 @@ export const Login: React.FC = () => {
         </motion.div>
 
         {/* Footer info */}
-        <div className="mt-6 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
+        <div className="mt-4 text-center">
+          <button
+            onClick={() => setCurrentPage('public-landing')}
+            className="text-[11px] font-semibold text-slate-500 hover:text-blue-600 transition-colors"
+          >
+            &larr; Kembali ke Notulis FGD
+          </button>
+        </div>
+        <div className="mt-3 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
           <CheckCircle2 className="h-3.5 w-3.5 text-blue-500" />
           <span>Sistem Berjalan di Lingkungan Produksi (Terhubung Backend)</span>
         </div>
