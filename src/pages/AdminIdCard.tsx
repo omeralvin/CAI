@@ -338,8 +338,8 @@ export const AdminIdCard: React.FC = () => {
       const y = mt + row * (ch + g);
 
       const cardCanvas = document.createElement('canvas');
-      cardCanvas.width = template.naturalWidth || 640;
-      cardCanvas.height = template.naturalHeight || 400;
+      cardCanvas.width = templateImg.naturalWidth || 640;
+      cardCanvas.height = templateImg.naturalHeight || 400;
       await renderCard(cardCanvas, templateImg, used[i], config);
       ctx.drawImage(cardCanvas, 0, 0, cardCanvas.width, cardCanvas.height, x, y, cw, ch);
     }
