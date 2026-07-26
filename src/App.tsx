@@ -18,7 +18,23 @@ import { AdminFgdPrint } from './pages/AdminFgdPrint';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AppContent() {
-  const { currentUser, currentPage } = useApp();
+  const { currentUser, currentPage, isAuthLoading } = useApp();
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-5">
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-blue-200 rounded-full animate-spin border-t-blue-600" />
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-lg font-bold text-slate-800 tracking-tight">CAI Presensi</span>
+            <span className="text-[11px] text-slate-400 font-medium">Memuat data...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     if (currentPage === 'public-landing') {

@@ -4,6 +4,7 @@ import { Participant, CheckInLog, User, PageId, AttendanceSession, DashboardData
 
 interface AppContextType {
   currentUser: User | null;
+  isAuthLoading: boolean;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   currentPage: PageId;
@@ -37,6 +38,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState<PageId>('login');
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [checkInLogs, setCheckInLogs] = useState<CheckInLog[]>([]);
@@ -97,7 +99,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setCurrentPage(user.role === 'admin' ? 'admin-dashboard' : 'operator-checkin');
           } else {
             localStorage.removeItem('cai_token');
-            setCurrentUser(null);
             setCurrentPage('login');
           }
         } catch (error) {
@@ -107,6 +108,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         setCurrentPage('public-landing');
       }
+      setIsAuthLoading(false);
     };
 
     initializeApp();
@@ -398,6 +400,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider value={{
       currentUser,
+      isAuthLoading,
       login,
       logout,
       currentPage,
