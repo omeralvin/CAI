@@ -157,6 +157,12 @@ export const OperatorCheckIn: React.FC = () => {
     }
   }, [sessions, setActiveSessionId, autoDetectActiveSession]);
 
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+
+  const autoDetectRef = useRef(autoDetectActiveSession);
+  autoDetectRef.current = autoDetectActiveSession;
+
   // Fetch sessions on mount
   useEffect(() => {
     fetchSessions();
@@ -169,11 +175,16 @@ export const OperatorCheckIn: React.FC = () => {
     setRfidStatus('scanning');
     setFlashMessage(null);
 
+    let sessionId = activeSessionIdRef.current;
+    if (!sessionId && sessionsRef.current.length > 0) {
+      sessionId = autoDetectRef.current(sessionsRef.current);
+    }
+
     try {
       const response = await fetch(`${API_BASE_URL}/attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardId, sessionId: activeSessionIdRef.current }),
+        body: JSON.stringify({ cardId, sessionId }),
       });
 
       const data = await response.json();
