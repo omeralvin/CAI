@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../api';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Participant, CheckInLog, User, PageId, AttendanceSession, DashboardData } from '../types';
 
@@ -32,7 +33,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const API_BASE_URL = 'http://localhost:5050/api';
+
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);

@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { FgdMinute } from '../types';
 import { useApp } from '../context/AppContext';
+import { API_BASE_URL } from '../api';
 import logoWarna from '../../assets/image/logo_warna.png';
-
-const API_BASE_URL = 'http://localhost:5050/api';
 
 function getHeaders() {
   const token = localStorage.getItem('cai_token');

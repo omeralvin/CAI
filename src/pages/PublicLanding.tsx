@@ -3,9 +3,8 @@ import { FgdMinute } from '../types';
 import { FgdForm } from '../components/FgdForm';
 import { useApp } from '../context/AppContext';
 import logoWarna from '../../assets/image/logo_warna.png';
+import { API_BASE_URL } from '../api';
 import { ChevronDown, FileText, LogIn, AlertTriangle } from 'lucide-react';
-
-const API_BASE_URL = 'http://localhost:5050/api';
 const GROUPS = Array.from({ length: 15 }, (_, i) => i + 1);
 const SESSION_OPTIONS = ['Sesi 1', 'Sesi 2', 'Sesi 3', 'Sesi 4', 'Sesi 5'];
 

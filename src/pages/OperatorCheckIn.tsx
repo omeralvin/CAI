@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Participant, AttendanceSession } from '../types';
+import { API_BASE_URL } from '../api';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   QrCode, 
@@ -137,8 +138,7 @@ export const OperatorCheckIn: React.FC = () => {
     setFlashMessage(null);
 
     try {
-      const API_BASE = 'http://localhost:5050/api';
-      const response = await fetch(`${API_BASE}/attendance`, {
+      const response = await fetch(`${API_BASE_URL}/attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cardId, sessionId: activeSessionIdRef.current }),

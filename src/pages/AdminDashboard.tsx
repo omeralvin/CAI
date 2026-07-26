@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { DashboardData, AttendanceSession } from '../types';
+import { API_BASE_URL } from '../api';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users,
@@ -160,7 +161,7 @@ export const AdminDashboard: React.FC = () => {
     const token = localStorage.getItem('cai_token');
     if (!token) return;
     // Export ALL sessions (no sessionId param)
-    const url = 'http://localhost:5050/api/analytics/export-pdf';
+    const url = `${API_BASE_URL}/analytics/export-pdf`;
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) return;
