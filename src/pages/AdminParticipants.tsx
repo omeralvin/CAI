@@ -89,13 +89,16 @@ export const AdminParticipants: React.FC = () => {
     rfidCardId: '',
   });
   const [addError, setAddError] = useState('');
+  const [addSaving, setAddSaving] = useState(false);
 
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const [importText, setImportText] = useState('');
   const [importPreview, setImportPreview] = useState<Omit<Participant, 'isCheckedIn'>[]>([]);
   const [importError, setImportError] = useState('');
   const [importSuccessMsg, setImportSuccessMsg] = useState('');
+  const [importSaving, setImportSaving] = useState(false);
 
   const [isOtsRfidOpen, setIsOtsRfidOpen] = useState(false);
   const [otsSearchQuery, setOtsSearchQuery] = useState('');
@@ -267,6 +270,7 @@ export const AdminParticipants: React.FC = () => {
       setAddError('Keterangan wajib diisi!');
       return;
     }
+    setAddSaving(true);
     const formattedId = generateNextId();
     const ageVal = newParticipant.age.trim() ? parseInt(newParticipant.age.trim(), 10) : null;
     const success = await addParticipant({
@@ -278,6 +282,7 @@ export const AdminParticipants: React.FC = () => {
       origin: newParticipant.origin.trim(),
       rfidCardId: newParticipant.rfidCardId.trim().toUpperCase() || null,
     });
+    setAddSaving(false);
     if (success) {
       setIsAddOpen(false);
       setNewParticipant({ id: '', name: '', age: '', gender: 'L', group: '', origin: '', rfidCardId: '' });
@@ -290,11 +295,13 @@ export const AdminParticipants: React.FC = () => {
     e.preventDefault();
     if (!editingParticipant) return;
     if (!editingParticipant.name.trim() || !editingParticipant.origin.trim()) return;
+    setEditSaving(true);
     await updateParticipant({
       ...editingParticipant,
       name: editingParticipant.name.trim(),
       origin: editingParticipant.origin.trim(),
     });
+    setEditSaving(false);
     setIsEditOpen(false);
     setEditingParticipant(null);
   };
@@ -341,6 +348,7 @@ export const AdminParticipants: React.FC = () => {
 
   const handleExecuteImport = async () => {
     if (importPreview.length === 0) return;
+    setImportSaving(true);
     const year = new Date().getFullYear().toString();
     let maxNum = 0;
     participants.forEach(p => {
@@ -355,6 +363,7 @@ export const AdminParticipants: React.FC = () => {
       id: `CAI-${year}-${String(maxNum + 1 + i).padStart(3, '0')}`,
     }));
     const importedCount = await importParticipants(dataWithIds);
+    setImportSaving(false);
     const skippedCount = importPreview.length - importedCount;
     setImportSuccessMsg(`Berhasil mengimpor ${importedCount} peserta baru.`);
     if (skippedCount > 0)
@@ -1082,11 +1091,13 @@ export const AdminParticipants: React.FC = () => {
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 flex justify-end gap-2.5">
-                  <button type="button" onClick={() => setIsAddOpen(false)} className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer bg-white">
+                  <button type="button" disabled={addSaving} onClick={() => setIsAddOpen(false)} className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer bg-white disabled:opacity-40">
                     Batal
                   </button>
-                  <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl cursor-pointer">
-                    Simpan Peserta
+                  <button type="submit" disabled={addSaving} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-300 text-white text-xs font-bold rounded-xl cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5 transition-all">
+                    {addSaving ? (
+                      <><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg> Menyimpan...</>
+                    ) : 'Simpan Peserta'}
                   </button>
                 </div>
               </form>
@@ -1232,16 +1243,19 @@ export const AdminParticipants: React.FC = () => {
                 <div className="pt-4 border-t border-slate-100 flex justify-end gap-2.5">
                   <button
                     type="button"
+                    disabled={editSaving}
                     onClick={() => {
                       setIsEditOpen(false);
                       setEditingParticipant(null);
                     }}
-                    className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer bg-white"
+                    className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer bg-white disabled:opacity-40"
                   >
                     Batal
                   </button>
-                  <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl cursor-pointer">
-                    Simpan Perubahan
+                  <button type="submit" disabled={editSaving} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-300 text-white text-xs font-bold rounded-xl cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5 transition-all">
+                    {editSaving ? (
+                      <><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg> Menyimpan...</>
+                    ) : 'Simpan Perubahan'}
                   </button>
                 </div>
               </form>
@@ -1333,11 +1347,15 @@ export const AdminParticipants: React.FC = () => {
                   {importPreview.length > 0 && (
                     <button
                       type="button"
+                      disabled={importSaving}
                       onClick={handleExecuteImport}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-300 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed transition-all"
                     >
-                      <Check className="h-3.5 w-3.5" />
-                      Impor {importPreview.length} Peserta ke Sistem
+                      {importSaving ? (
+                        <><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg> Mengimpor...</>
+                      ) : (
+                        <><Check className="h-3.5 w-3.5" /> Impor {importPreview.length} Peserta ke Sistem</>
+                      )}
                     </button>
                   )}
                 </div>
