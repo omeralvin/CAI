@@ -6,6 +6,32 @@ const SESSION_OPTIONS = ['Sesi 1', 'Sesi 2', 'Sesi 3', 'Sesi 4', 'Sesi 5'];
 
 type FgdFormData = Omit<FgdMinute, 'id' | 'createdAt' | 'updatedAt' | 'groupNumber'>;
 
+const REQUIRED_FIELDS: (keyof FgdFormData)[] = [
+  'usulanPermasalahan',
+  'problem',
+  'penyebab',
+  'solusi',
+  'actionPlanBidangPpg',
+  'actionPlanDeskripsi',
+  'actionPlanNamaKegiatan',
+  'actionPlanPeserta',
+  'actionPlanWaktu',
+  'actionPlanDana',
+];
+
+const FIELD_LABELS: Record<string, string> = {
+  usulanPermasalahan: 'Usulan Permasalahan',
+  problem: 'Problem',
+  penyebab: 'Penyebab',
+  solusi: 'Solusi',
+  actionPlanBidangPpg: 'Bidang PPG',
+  actionPlanDeskripsi: 'Deskripsi',
+  actionPlanNamaKegiatan: 'Nama Kegiatan',
+  actionPlanPeserta: 'Peserta',
+  actionPlanWaktu: 'Waktu',
+  actionPlanDana: 'Dana',
+};
+
 interface FgdFormProps {
   groupNumber: number;
   initialData: FgdMinute | null;
@@ -107,13 +133,14 @@ function FormatToolbar({ textareaRef }: { textareaRef: React.RefObject<HTMLTextA
   );
 }
 
-function FieldGroup({ label, value, onChange, disabled, rows = 3, placeholder }: {
+function FieldGroup({ label, value, onChange, disabled, rows = 3, placeholder, error }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   disabled?: boolean;
   rows?: number;
   placeholder?: string;
+  error?: string;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -128,8 +155,13 @@ function FieldGroup({ label, value, onChange, disabled, rows = 3, placeholder }:
         disabled={disabled}
         rows={rows}
         placeholder={placeholder}
-        className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-b-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-y disabled:bg-slate-50 disabled:text-slate-500 placeholder:text-slate-300"
+        className={`w-full px-3 py-2.5 text-sm border rounded-b-lg focus:ring-2 focus:border-blue-500 outline-none transition-all resize-y disabled:bg-slate-50 disabled:text-slate-500 placeholder:text-slate-300 ${
+          error ? 'border-rose-300 focus:ring-rose-500/20 bg-rose-50' : 'border-slate-200 focus:ring-blue-500/20'
+        }`}
       />
+      {error && (
+        <p className="text-[11px] text-rose-500 mt-1 font-medium">{error}</p>
+      )}
     </div>
   );
 }
@@ -143,22 +175,43 @@ export const FgdForm: React.FC<FgdFormProps> = ({ groupNumber, initialData, onSu
     return { ...emptyForm };
   });
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   React.useEffect(() => {
     if (initialData) {
       const { id, createdAt, updatedAt, groupNumber: _, ...rest } = initialData;
       setForm(rest);
+      setErrors({});
     } else {
       setForm({ ...emptyForm });
+      setErrors({});
     }
   }, [initialData, groupNumber]);
 
   const update = useCallback((key: keyof FgdFormData, value: string) => {
     setForm(prev => ({ ...prev, [key]: value }));
-  }, []);
+    if (errors[key]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  }, [errors]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const newErrors: Record<string, string> = {};
+    for (const field of REQUIRED_FIELDS) {
+      if (!form[field]?.trim()) {
+        newErrors[field] = `${FIELD_LABELS[field] || field} harus diisi`;
+      }
+    }
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
     setSaving(true);
     try {
       await onSubmit(form);
@@ -215,23 +268,24 @@ export const FgdForm: React.FC<FgdFormProps> = ({ groupNumber, initialData, onSu
         disabled={disabled}
         rows={4}
         placeholder="Tuliskan poin-poin usulan permasalahan di sini...&#10;Contoh:&#10;1. Masalah A&#10;2. Masalah B"
+        error={errors.usulanPermasalahan}
       />
 
       {sectionTitle('PROBLEM - PENYEBAB - SOLUSI')}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <FieldGroup label="Problem" value={form.problem} onChange={v => update('problem', v)} disabled={disabled} rows={4} placeholder="Tuliskan problem utama..." />
-        <FieldGroup label="Penyebab" value={form.penyebab} onChange={v => update('penyebab', v)} disabled={disabled} rows={4} placeholder="Tuliskan akar penyebab..." />
-        <FieldGroup label="Solusi" value={form.solusi} onChange={v => update('solusi', v)} disabled={disabled} rows={4} placeholder="Tuliskan usulan solusi..." />
+        <FieldGroup label="Problem" value={form.problem} onChange={v => update('problem', v)} disabled={disabled} rows={4} placeholder="Tuliskan problem utama..." error={errors.problem} />
+        <FieldGroup label="Penyebab" value={form.penyebab} onChange={v => update('penyebab', v)} disabled={disabled} rows={4} placeholder="Tuliskan akar penyebab..." error={errors.penyebab} />
+        <FieldGroup label="Solusi" value={form.solusi} onChange={v => update('solusi', v)} disabled={disabled} rows={4} placeholder="Tuliskan usulan solusi..." error={errors.solusi} />
       </div>
 
       {sectionTitle('ACTION PLAN')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FieldGroup label="Bidang PPG" value={form.actionPlanBidangPpg} onChange={v => update('actionPlanBidangPpg', v)} disabled={disabled} rows={3} />
-        <FieldGroup label="Deskripsi" value={form.actionPlanDeskripsi} onChange={v => update('actionPlanDeskripsi', v)} disabled={disabled} rows={3} />
-        <FieldGroup label="Nama Kegiatan" value={form.actionPlanNamaKegiatan} onChange={v => update('actionPlanNamaKegiatan', v)} disabled={disabled} rows={3} />
-        <FieldGroup label="Peserta" value={form.actionPlanPeserta} onChange={v => update('actionPlanPeserta', v)} disabled={disabled} rows={3} />
-        <FieldGroup label="Waktu" value={form.actionPlanWaktu} onChange={v => update('actionPlanWaktu', v)} disabled={disabled} rows={3} />
-        <FieldGroup label="Dana" value={form.actionPlanDana} onChange={v => update('actionPlanDana', v)} disabled={disabled} rows={3} />
+        <FieldGroup label="Bidang PPG" value={form.actionPlanBidangPpg} onChange={v => update('actionPlanBidangPpg', v)} disabled={disabled} rows={3} error={errors.actionPlanBidangPpg} />
+        <FieldGroup label="Deskripsi" value={form.actionPlanDeskripsi} onChange={v => update('actionPlanDeskripsi', v)} disabled={disabled} rows={3} error={errors.actionPlanDeskripsi} />
+        <FieldGroup label="Nama Kegiatan" value={form.actionPlanNamaKegiatan} onChange={v => update('actionPlanNamaKegiatan', v)} disabled={disabled} rows={3} error={errors.actionPlanNamaKegiatan} />
+        <FieldGroup label="Peserta" value={form.actionPlanPeserta} onChange={v => update('actionPlanPeserta', v)} disabled={disabled} rows={3} error={errors.actionPlanPeserta} />
+        <FieldGroup label="Waktu" value={form.actionPlanWaktu} onChange={v => update('actionPlanWaktu', v)} disabled={disabled} rows={3} error={errors.actionPlanWaktu} />
+        <FieldGroup label="Dana" value={form.actionPlanDana} onChange={v => update('actionPlanDana', v)} disabled={disabled} rows={3} error={errors.actionPlanDana} />
       </div>
 
       {sectionTitle('PERAN 5 UNSUR')}

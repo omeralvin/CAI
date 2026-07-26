@@ -56,6 +56,7 @@ export const AdminParticipants: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'absent'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'peserta' | 'panitia'>('all');
   const [groupFilter, setGroupFilter] = useState<string>('all');
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
 
@@ -132,6 +133,11 @@ export const AdminParticipants: React.FC = () => {
 
   const groupsList = useMemo(() => Array.from(new Set(participants.map((p) => p.group))), [participants]);
 
+  const pesertaList = useMemo(() => participants.filter(p => !p.origin?.toLowerCase().includes('panitia')), [participants]);
+  const panitiaList = useMemo(() => participants.filter(p => p.origin?.toLowerCase().includes('panitia')), [participants]);
+  const pesertaCount = pesertaList.length;
+  const panitiaCount = panitiaList.length;
+
   const filteredParticipants = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return participants.filter((p) => {
@@ -146,9 +152,15 @@ export const AdminParticipants: React.FC = () => {
           ? p.isCheckedIn
           : !p.isCheckedIn;
       const matchGroup = groupFilter === 'all' ? true : p.group === groupFilter;
-      return matchSearch && matchStatus && matchGroup;
+      const matchCategory =
+        categoryFilter === 'all'
+          ? true
+          : categoryFilter === 'peserta'
+          ? !p.origin?.toLowerCase().includes('panitia')
+          : p.origin?.toLowerCase().includes('panitia');
+      return matchSearch && matchStatus && matchGroup && matchCategory;
     });
-  }, [participants, searchQuery, statusFilter, groupFilter]);
+  }, [participants, searchQuery, statusFilter, groupFilter, categoryFilter]);
 
   const allFilteredIds = useMemo(() => filteredParticipants.map(p => p.id), [filteredParticipants]);
 
@@ -474,8 +486,68 @@ export const AdminParticipants: React.FC = () => {
         </div>
       </div>
 
+      {/* ── Stat Cards: Peserta vs Panitia ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 flex items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+            <Users className="h-6 w-6 text-blue-600" />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Peserta</p>
+            <p className="text-2xl font-extrabold text-slate-900 mt-0.5">{pesertaCount}</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 flex items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+            <Users className="h-6 w-6 text-amber-600" />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Panitia</p>
+            <p className="text-2xl font-extrabold text-slate-900 mt-0.5">{panitiaCount}</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 flex items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
+            <Users className="h-6 w-6 text-emerald-600" />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Terdaftar</p>
+            <p className="text-2xl font-extrabold text-slate-900 mt-0.5">{pesertaCount + panitiaCount}</p>
+          </div>
+        </div>
+      </div>
+
       {/* ── Filter Toolbar ── */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-4 mb-6">
+        {/* Row 0: Kategori filter (Peserta / Panitia) */}
+        <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Kategori:</span>
+          <div className="flex gap-1.5">
+            {(['all', 'peserta', 'panitia'] as const).map(cat => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  categoryFilter === cat
+                    ? cat === 'peserta'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : cat === 'panitia'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'bg-slate-800 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {cat === 'all' ? 'Semua' : cat === 'peserta' ? 'Peserta' : 'Panitia'}
+              </button>
+            ))}
+          </div>
+          {categoryFilter !== 'all' && (
+            <span className="text-[10px] font-mono font-bold text-slate-400">
+              {categoryFilter === 'peserta' ? pesertaCount : panitiaCount} orang
+            </span>
+          )}
+        </div>
+
         {/* Row 1: Search + Kelompok + Status filter */}
         <div className="flex flex-col md:flex-row gap-4 mb-4">
           <div className="relative flex-1">
