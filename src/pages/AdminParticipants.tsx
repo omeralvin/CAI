@@ -19,6 +19,7 @@ import {
   Copy,
   Edit2,
   ChevronDown,
+  ChevronUp,
   CreditCard,
   Clock,
   Calendar,
@@ -35,6 +36,18 @@ const SAMPLE_CSV = `Rizky Pratama,25,L,Desa Karangrejo,KI Desa
 Dewi Lestari,28,P,Desa Sumbermulyo,MT Desa
 Bambang Pamungkas,30,L,Desa Tegalrejo,Panitia
 Siti Aminah,24,P,Desa Wonorejo,KI Desa`;
+
+function SortIcon({ dir }: { dir: 'asc' | 'desc' }) {
+  return (
+    <span className="inline-flex ml-1 align-middle">
+      {dir === 'asc' ? (
+        <ChevronUp className="h-3 w-3 text-blue-600" />
+      ) : (
+        <ChevronDown className="h-3 w-3 text-blue-600" />
+      )}
+    </span>
+  );
+}
 
 export const AdminParticipants: React.FC = () => {
   const {
@@ -105,6 +118,29 @@ export const AdminParticipants: React.FC = () => {
   const [isBatchDeleteOpen, setIsBatchDeleteOpen] = useState(false);
   const [batchDeleteStatus, setBatchDeleteStatus] = useState<'idle' | 'loading' | 'done'>('idle');
 
+  const [isDataLoading, setIsDataLoading] = useState(true);
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortField, setSortField] = useState<keyof Participant | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  useEffect(() => {
+    if (participants.length > 0 || checkInLogs.length > 0) {
+      const timer = setTimeout(() => setIsDataLoading(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [participants, checkInLogs]);
+
+  const handleSort = (field: keyof Participant) => {
+    if (sortField === field) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  };
+
   const sortedSessions = useMemo(
     () =>
       [...sessions].sort((a, b) => {
@@ -161,6 +197,29 @@ export const AdminParticipants: React.FC = () => {
       return matchSearch && matchStatus && matchGroup && matchCategory;
     });
   }, [participants, searchQuery, statusFilter, groupFilter, categoryFilter]);
+
+  const sortedParticipants = useMemo(() => {
+    if (!sortField) return filteredParticipants;
+    return [...filteredParticipants].sort((a, b) => {
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+      const cmp = String(aVal).localeCompare(String(bVal), 'id', { sensitivity: 'base' });
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredParticipants, sortField, sortDirection]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedParticipants.length / pageSize));
+  const paginatedParticipants = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedParticipants.slice(start, start + pageSize);
+  }, [sortedParticipants, currentPage, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages, currentPage]);
 
   const allFilteredIds = useMemo(() => filteredParticipants.map(p => p.id), [filteredParticipants]);
 
@@ -614,7 +673,16 @@ export const AdminParticipants: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Main Table ── */}
+      {/* ── Loader ── */}
+      {isDataLoading ? (
+        <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-16 flex flex-col items-center justify-center gap-3">
+          <svg className="animate-spin h-8 w-8 text-blue-600" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <p className="text-sm font-semibold text-slate-500">Memuat data peserta...</p>
+        </div>
+      ) : (
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full table-fixed divide-y divide-slate-200/80">
@@ -629,25 +697,33 @@ export const AdminParticipants: React.FC = () => {
                   />
                 </th>
                 <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider w-12">No</th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[22%]">Nama Peserta</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[22%] cursor-pointer select-none hover:bg-slate-100/80 transition-colors" onClick={() => handleSort('name')}>
+                  Nama Peserta {sortField === 'name' && <SortIcon dir={sortDirection} />}
+                </th>
                 <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[13%]">ID Card</th>
                 <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[6%]">Umur</th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[11%]">Gender</th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[14%]">Kelompok / Desa</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[11%] cursor-pointer select-none hover:bg-slate-100/80 transition-colors" onClick={() => handleSort('gender')}>
+                  Gender {sortField === 'gender' && <SortIcon dir={sortDirection} />}
+                </th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[14%] cursor-pointer select-none hover:bg-slate-100/80 transition-colors" onClick={() => handleSort('group')}>
+                  Kelompok / Desa {sortField === 'group' && <SortIcon dir={sortDirection} />}
+                </th>
                 <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[13%]">Status Absensi</th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[11%]">Keterangan</th>
+                <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[11%] cursor-pointer select-none hover:bg-slate-100/80 transition-colors" onClick={() => handleSort('origin')}>
+                  Keterangan {sortField === 'origin' && <SortIcon dir={sortDirection} />}
+                </th>
                 <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider w-[15%]">Aksi</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-100 text-sm">
-              {filteredParticipants.length === 0 ? (
+              {paginatedParticipants.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-6 py-12 text-center text-slate-400 text-xs font-medium">
                     Tidak ada data peserta ditemukan yang sesuai dengan kriteria filter.
                   </td>
                 </tr>
               ) : (
-                filteredParticipants.map((p, idx) => {
+                paginatedParticipants.map((p, idx) => {
                   const sessionStatus = selectedSessionId
                     ? getSessionStatus(p.id, selectedSessionId)
                     : null;
@@ -668,7 +744,7 @@ export const AdminParticipants: React.FC = () => {
                       </td>
                       {/* No */}
                       <td className="px-4 py-3.5 text-center text-xs font-bold text-slate-400">
-                        {idx + 1}
+                        {(currentPage - 1) * pageSize + idx + 1}
                       </td>
 
                       {/* Nama */}
@@ -812,7 +888,61 @@ export const AdminParticipants: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="font-medium">Tampilkan</span>
+            <select
+              value={pageSize}
+              onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+              className="px-2 py-1 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            >
+              {[10, 20, 50, 75, 100].map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <span className="font-medium">
+              dari {sortedParticipants.length} data
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
+            >
+              Prev
+            </button>
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+              const startPage = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+              const page = startPage + i;
+              if (page > totalPages) return null;
+              return (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`min-w-[32px] px-2 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                    currentPage === page
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {page}
+                </button>
+              );
+            })}
+            <button
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════
           MODAL 1: ADD PARTICIPANT
