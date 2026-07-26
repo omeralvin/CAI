@@ -19,12 +19,14 @@ import {
   Wifi,
   Calendar,
   ChevronDown,
+  Clock,
 } from 'lucide-react';
 
 
 
 const RFID_BUFFER_TIMEOUT_MS = 2000;
 const RFID_MAX_BUFFER_LENGTH = 32;
+const EARLY_BUFFER_MINUTES = 20;
 
 export const OperatorCheckIn: React.FC = () => {
   const { participants, checkInParticipant, currentUser, checkInLogs, sessions, fetchSessions, activeSessionId, setActiveSessionId, refreshBackendData } = useApp();
@@ -32,6 +34,7 @@ export const OperatorCheckIn: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [idInput, setIdInput] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showSessionDropdown, setShowSessionDropdown] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [rfidInput, setRfidInput] = useState('');
   const [rfidStatus, setRfidStatus] = useState<'idle' | 'scanning' | 'success' | 'warn' | 'error'>('idle');
@@ -76,6 +79,29 @@ export const OperatorCheckIn: React.FC = () => {
 
   const userManuallySelected = useRef(false);
 
+  const getSessionStatus = useCallback((session: AttendanceSession): 'active' | 'soon' | 'upcoming' | 'past' => {
+    const now = new Date();
+    const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
+
+    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const currentDayName = dayNames[now.getDay()];
+    const todayStr = now.toISOString().split('T')[0];
+
+    const sessionDate = session.date ? new Date(session.date).toISOString().split('T')[0] : '';
+    if (sessionDate !== todayStr && session.dayName !== currentDayName) return 'past';
+
+    const [startH, startM] = session.startTime.split(':').map(Number);
+    const [endH, endM] = session.endTime.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    const openMinutes = startMinutes - EARLY_BUFFER_MINUTES;
+
+    if (currentTimeMinutes >= openMinutes && currentTimeMinutes <= endMinutes) return 'active';
+    if (currentTimeMinutes < openMinutes && currentTimeMinutes >= startMinutes - 120) return 'soon';
+    if (currentTimeMinutes < openMinutes) return 'upcoming';
+    return 'past';
+  }, []);
+
   const autoDetectActiveSession = useCallback((sessionsList: AttendanceSession[]): string | null => {
     const now = new Date();
     const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
@@ -84,32 +110,38 @@ export const OperatorCheckIn: React.FC = () => {
     const currentDayName = dayNames[now.getDay()];
     const todayStr = now.toISOString().split('T')[0];
 
-    for (const session of sessionsList) {
-      const sessionDate = session.date ? new Date(session.date).toISOString().split('T')[0] : '';
-      if (sessionDate !== todayStr && session.dayName !== currentDayName) continue;
+    const todaySessions = sessionsList.filter(s => {
+      const sessionDate = s.date ? new Date(s.date).toISOString().split('T')[0] : '';
+      return sessionDate === todayStr || s.dayName === currentDayName;
+    });
 
+    // First pass: find an active session (within [start - buffer, end])
+    for (const session of todaySessions) {
       const [startH, startM] = session.startTime.split(':').map(Number);
       const [endH, endM] = session.endTime.split(':').map(Number);
       const startMinutes = startH * 60 + startM;
       const endMinutes = endH * 60 + endM;
+      const openMinutes = startMinutes - EARLY_BUFFER_MINUTES;
 
-      if (currentTimeMinutes >= startMinutes && currentTimeMinutes <= endMinutes) {
+      if (currentTimeMinutes >= openMinutes && currentTimeMinutes <= endMinutes) {
         return session.id;
       }
     }
 
+    // Second pass: find the closest upcoming session that starts within 2 hours
     let closestSession: AttendanceSession | null = null;
     let smallestDiff = Infinity;
+    const MAX_UPCOMING_WINDOW = 120;
 
-    for (const session of sessionsList) {
-      const sessionDate = session.date ? new Date(session.date).toISOString().split('T')[0] : '';
-      if (sessionDate !== todayStr && session.dayName !== currentDayName) continue;
-
+    for (const session of todaySessions) {
       const [startH, startM] = session.startTime.split(':').map(Number);
+      const [endH, endM] = session.endTime.split(':').map(Number);
       const startMinutes = startH * 60 + startM;
-      const diff = Math.abs(currentTimeMinutes - startMinutes);
 
-      if (diff < smallestDiff) {
+      if (currentTimeMinutes > endH * 60 + endM) continue;
+
+      const diff = startMinutes - currentTimeMinutes;
+      if (diff >= 0 && diff < smallestDiff && diff <= MAX_UPCOMING_WINDOW) {
         smallestDiff = diff;
         closestSession = session;
       }
@@ -349,23 +381,103 @@ export const OperatorCheckIn: React.FC = () => {
               Pilih Sesi
             </span>
             <div className="relative flex-1">
-              <select
-                value={activeSessionId || ''}
-                onChange={(e) => {
-                  userManuallySelected.current = true;
-                  setActiveSessionId(e.target.value || null);
-                }}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+              <button
+                type="button"
+                onClick={() => setShowSessionDropdown(s => !s)}
+                onBlur={() => setTimeout(() => setShowSessionDropdown(false), 200)}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer flex items-center gap-2"
               >
-                <option value="">Semua Sesi</option>
-                {sessions.length > 0 && sessions.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    Sesi {s.sessionNumber} ({s.startTime} – {s.endTime})
-                  </option>
-                ))}
-                {sessions.length === 0 && <option value="">Tidak ada sesi</option>}
-              </select>
-              <ChevronDown className="h-4 w-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                {activeSessionId ? (
+                  <span className="flex items-center gap-2 flex-1 text-left">
+                    <span>
+                      Sesi {sessions.find(s => s.id === activeSessionId)?.sessionNumber} ({sessions.find(s => s.id === activeSessionId)?.startTime} – {sessions.find(s => s.id === activeSessionId)?.endTime})
+                    </span>
+                    {(() => {
+                      const s = sessions.find(x => x.id === activeSessionId);
+                      if (!s) return null;
+                      const status = getSessionStatus(s);
+                      if (status === 'active') return <span className="ml-auto text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Aktif</span>;
+                      if (status === 'soon') return <span className="ml-auto text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full flex items-center gap-1"><Clock className="w-3 h-3" />Segera</span>;
+                      return null;
+                    })()}
+                  </span>
+                ) : (
+                  <span className="text-slate-400 flex-1 text-left">Pilih sesi absensi...</span>
+                )}
+                <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />
+              </button>
+
+              {showSessionDropdown && (
+                <div className="absolute z-30 left-0 right-0 mt-1.5 bg-white border border-slate-200/80 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto">
+                  <button
+                    type="button"
+                    onMouseDown={() => {
+                      userManuallySelected.current = true;
+                      setActiveSessionId(null);
+                      setShowSessionDropdown(false);
+                    }}
+                    className={`w-full px-4 py-3 text-left text-xs font-bold transition-colors hover:bg-slate-50 flex items-center gap-2 ${!activeSessionId ? 'bg-blue-50 text-blue-700' : 'text-slate-500'}`}
+                  >
+                    <span>Semua Sesi</span>
+                  </button>
+
+                  {sessions.length === 0 && (
+                    <div className="px-4 py-6 text-center text-xs text-slate-400">Tidak ada sesi tersedia</div>
+                  )}
+
+                  {[...sessions]
+                    .sort((a, b) => {
+                      const order = { active: 0, soon: 1, upcoming: 2, past: 3 };
+                      const sa = order[getSessionStatus(a)] ?? 4;
+                      const sb = order[getSessionStatus(b)] ?? 4;
+                      if (sa !== sb) return sa - sb;
+                      return a.startTime.localeCompare(b.startTime);
+                    })
+                    .map(s => {
+                      const status = getSessionStatus(s);
+                      const isSelected = s.id === activeSessionId;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onMouseDown={() => {
+                            userManuallySelected.current = true;
+                            setActiveSessionId(s.id);
+                            setShowSessionDropdown(false);
+                          }}
+                          className={`w-full px-4 py-3 text-left transition-colors hover:bg-slate-50 flex items-center gap-3 border-t border-slate-100/80 ${isSelected ? 'bg-blue-50' : ''}`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                              Sesi {s.sessionNumber}
+                              {status === 'active' && (
+                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />Aktif
+                                </span>
+                              )}
+                              {status === 'soon' && (
+                                <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                  <Clock className="w-2.5 h-2.5" />Segera
+                                </span>
+                              )}
+                              {status === 'upcoming' && (
+                                <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">
+                                  Akan Datang
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                              {s.startTime} – {s.endTime} {s.name ? `• ${s.name}` : ''}
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
             </div>
           </div>
         </div>
