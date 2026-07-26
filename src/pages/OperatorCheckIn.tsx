@@ -387,21 +387,21 @@ export const OperatorCheckIn: React.FC = () => {
                 onBlur={() => setTimeout(() => setShowSessionDropdown(false), 200)}
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer flex items-center gap-2"
               >
-                {activeSessionId ? (
-                  <span className="flex items-center gap-2 flex-1 text-left">
-                    <span>
-                      Sesi {sessions.find(s => s.id === activeSessionId)?.sessionNumber} ({sessions.find(s => s.id === activeSessionId)?.startTime} – {sessions.find(s => s.id === activeSessionId)?.endTime})
+                {activeSessionId ? (() => {
+                  const s = sessions.find(x => x.id === activeSessionId);
+                  if (!s) return <span className="text-slate-400 flex-1 text-left">Pilih sesi absensi...</span>;
+                  const status = getSessionStatus(s);
+                  return (
+                    <span className="flex items-center gap-2 flex-1 text-left">
+                      <span className="truncate">
+                        <span className="font-bold">{s.name}</span>
+                        <span className="text-slate-400 font-normal ml-1">({s.startTime} – {s.endTime})</span>
+                      </span>
+                      {status === 'active' && <span className="ml-auto shrink-0 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Aktif</span>}
+                      {status === 'soon' && <span className="ml-auto shrink-0 text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full flex items-center gap-1"><Clock className="w-3 h-3" />Segera</span>}
                     </span>
-                    {(() => {
-                      const s = sessions.find(x => x.id === activeSessionId);
-                      if (!s) return null;
-                      const status = getSessionStatus(s);
-                      if (status === 'active') return <span className="ml-auto text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Aktif</span>;
-                      if (status === 'soon') return <span className="ml-auto text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full flex items-center gap-1"><Clock className="w-3 h-3" />Segera</span>;
-                      return null;
-                    })()}
-                  </span>
-                ) : (
+                  );
+                })() : (
                   <span className="text-slate-400 flex-1 text-left">Pilih sesi absensi...</span>
                 )}
                 <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />
@@ -448,26 +448,26 @@ export const OperatorCheckIn: React.FC = () => {
                           className={`w-full px-4 py-3 text-left transition-colors hover:bg-slate-50 flex items-center gap-3 border-t border-slate-100/80 ${isSelected ? 'bg-blue-50' : ''}`}
                         >
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                              Sesi {s.sessionNumber}
+                            <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-2">
+                              {s.name}
                               {status === 'active' && (
-                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                <span className="shrink-0 text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
                                   <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />Aktif
                                 </span>
                               )}
                               {status === 'soon' && (
-                                <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                <span className="shrink-0 text-[9px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
                                   <Clock className="w-2.5 h-2.5" />Segera
                                 </span>
                               )}
                               {status === 'upcoming' && (
-                                <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">
+                                <span className="shrink-0 text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">
                                   Akan Datang
                                 </span>
                               )}
                             </div>
                             <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                              {s.startTime} – {s.endTime} {s.name ? `• ${s.name}` : ''}
+                              Sesi {s.sessionNumber} • {s.startTime} – {s.endTime}
                             </div>
                           </div>
                           {isSelected && (

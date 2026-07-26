@@ -696,7 +696,7 @@ export const AdminParticipants: React.FC = () => {
                             <span className="text-slate-300">-</span>
                           )
                         ) : (
-                          <span className="text-slate-300">-</span>
+                          <span className="text-slate-700">{p.origin || '-'}</span>
                         )}
                       </td>
 
