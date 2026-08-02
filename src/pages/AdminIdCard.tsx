@@ -9,7 +9,8 @@ import {
   CreditCard, Upload, Download, Settings, Eye, Users, Check,
   ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Type,
   Sliders, MousePointerClick, Maximize, Printer, FileDown, Scissors, LayoutGrid,
-  Plus, Trash2, AlignLeft, AlignCenter, AlignRight
+  Plus, Trash2, AlignLeft, AlignCenter, AlignRight, TextAlignJustify,
+  AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd
 } from 'lucide-react';
 import { computeGrid, pageCountFor, slotPosition, GridLayoutParams } from '../utils/idcardLayout';
 import { PaperLayoutPreview } from '../components/PaperLayoutPreview';
@@ -38,6 +39,11 @@ const FIELD_OPTIONS: FieldOption[] = [
 const fieldLabel = (key: ParticipantFieldKey) => FIELD_OPTIONS.find(o => o.key === key)?.label ?? key;
 const fieldValue = (key: ParticipantFieldKey, p: Participant) => FIELD_OPTIONS.find(o => o.key === key)?.get(p) ?? '';
 
+/** Perataan horizontal teks di dalam kotak. */
+type TextAlign = 'left' | 'center' | 'right' | 'justify';
+/** Posisi vertikal teks di dalam kotak. */
+type VAlign = 'top' | 'center' | 'bottom';
+
 interface TextFieldConfig {
   id: string;
   field: ParticipantFieldKey;
@@ -48,7 +54,8 @@ interface TextFieldConfig {
   fontSize: number;
   color: string;
   fontWeight: 'normal' | 'bold';
-  align: CanvasTextAlign;
+  align: TextAlign;      // rata kiri/tengah/kanan/justify
+  valign: VAlign;        // posisi vertikal teks dalam kotak
   fontFamily: string;
   lineHeight: number; // pengali jarak antar baris
   padding: number;    // jarak aman di dalam kotak (px)
@@ -94,9 +101,9 @@ const PAPER_PRESETS: PaperPreset[] = [
 
 const DEFAULT_CONFIG: CardConfig = {
   textFields: [
-    { id: 'name', field: 'name', x: 50, y: 150, width: 360, height: 0, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, lineHeight: 1.25, padding: 8, maxLines: 0, autofit: false },
-    { id: 'group', field: 'group', x: 50, y: 190, width: 360, height: 0, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, lineHeight: 1.25, padding: 6, maxLines: 0, autofit: false },
-    { id: 'origin', field: 'origin', x: 50, y: 210, width: 360, height: 0, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, lineHeight: 1.25, padding: 6, maxLines: 0, autofit: false },
+    { id: 'name', field: 'name', x: 50, y: 150, width: 360, height: 0, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'center', valign: 'center', fontFamily: DEFAULT_FONT_FAMILY, lineHeight: 1.25, padding: 8, maxLines: 0, autofit: false },
+    { id: 'group', field: 'group', x: 50, y: 190, width: 360, height: 0, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', valign: 'center', fontFamily: DEFAULT_FONT_FAMILY, lineHeight: 1.25, padding: 6, maxLines: 0, autofit: false },
+    { id: 'origin', field: 'origin', x: 50, y: 210, width: 360, height: 0, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', valign: 'center', fontFamily: DEFAULT_FONT_FAMILY, lineHeight: 1.25, padding: 6, maxLines: 0, autofit: false },
   ],
   qr: { x: 460, y: 175, size: 110 },
 };
@@ -290,7 +297,21 @@ const HANDLE_CURSOR: Record<ResizeHandle, string> = {
   e: 'ew-resize', se: 'nwse-resize', s: 'ns-resize', sw: 'nesw-resize', w: 'ew-resize',
 };
 
-/** Gambar satu elemen teks di dalam kotaknya (wrap + padding + line-height). */
+/** Gambar satu baris teks rata kiri-kanan (justify) dengan meratakan spasi antar kata. */
+function drawJustifiedLine(ctx: CanvasRenderingContext2D, line: string, x: number, y: number, maxWidth: number) {
+  const words = line.split(/\s+/).filter(Boolean);
+  if (words.length <= 1) { ctx.fillText(line, x, y); return; }
+  const widths = words.map(w => ctx.measureText(w).width);
+  const total = widths.reduce((a, b) => a + b, 0);
+  const extraGap = (maxWidth - total) / (words.length - 1);
+  let cur = x;
+  words.forEach((w, i) => {
+    ctx.fillText(w, cur, y);
+    cur += widths[i] + extraGap;
+  });
+}
+
+/** Gambar satu elemen teks di dalam kotaknya (wrap + padding + line-height + alignment). */
 function drawTextField(
   ctx: CanvasRenderingContext2D, t: TextFieldConfig, text: string,
 ) {
@@ -298,7 +319,6 @@ function drawTextField(
   const { fontSize, lines } = layout;
   ctx.font = `${t.fontWeight} ${fontSize}px ${t.fontFamily}`;
   ctx.fillStyle = t.color;
-  ctx.textAlign = t.align;
 
   const clipToBox = t.height > 0;
   if (clipToBox) {
@@ -309,12 +329,31 @@ function drawTextField(
   }
 
   const linePx = fontSize * layout.lineHeight;
-  const firstBaseline = t.y + t.padding + fontSize * 0.8;
+  const contentW = t.width - t.padding * 2;
+  const innerTop = t.y + t.padding;
+  const innerBottom = t.y + (t.height > 0 ? t.height : 0) - t.padding;
+  const blockH = lines.length * linePx;
+
+  // Posisi vertikal teks di dalam kotak (atas / tengah / bawah).
+  let startY = innerTop;
+  if (t.height > 0) {
+    if (t.valign === 'center') startY = innerTop + Math.max(0, (innerBottom - innerTop - blockH) / 2);
+    else if (t.valign === 'bottom') startY = innerBottom - blockH;
+  }
+  const firstBaseline = startY + fontSize * 0.8;
+
   lines.forEach((line, i) => {
-    let x = t.x + t.padding;
-    if (t.align === 'center') x = t.x + t.width / 2;
-    else if (t.align === 'right') x = t.x + t.width - t.padding;
-    ctx.fillText(line, x, firstBaseline + i * linePx);
+    const baseline = firstBaseline + i * linePx;
+    if (t.align === 'justify') {
+      ctx.textAlign = 'left';
+      drawJustifiedLine(ctx, line, t.x + t.padding, baseline, contentW);
+    } else {
+      ctx.textAlign = t.align;
+      let x = t.x + t.padding;
+      if (t.align === 'center') x = t.x + t.width / 2;
+      else if (t.align === 'right') x = t.x + t.width - t.padding;
+      ctx.fillText(line, x, baseline);
+    }
   });
 
   if (clipToBox) ctx.restore();
@@ -559,7 +598,7 @@ export const AdminIdCard: React.FC = () => {
       ...c,
       textFields: [...c.textFields, {
         id: newId, field: 'name', x: 50, y: 180, width: 360, height: 0, fontSize: 16, color: '#1e293b',
-        fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY,
+        fontWeight: 'normal', align: 'left', valign: 'center', fontFamily: DEFAULT_FONT_FAMILY,
         lineHeight: 1.25, padding: 8, maxLines: 0, autofit: false,
       }],
     }));
@@ -742,9 +781,25 @@ export const AdminIdCard: React.FC = () => {
             { key: 'left' as const, icon: AlignLeft, title: 'Rata kiri' },
             { key: 'center' as const, icon: AlignCenter, title: 'Rata tengah' },
             { key: 'right' as const, icon: AlignRight, title: 'Rata kanan' },
+            { key: 'justify' as const, icon: TextAlignJustify, title: 'Rata kiri-kanan (justify)' },
           ]).map(({ key, icon: Icon, title }) => (
             <button key={key} type="button" title={title} onClick={() => update('align', key)}
               className={`flex-1 py-1.5 flex items-center justify-center transition-colors cursor-pointer ${cfg.align === key ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
+              <Icon className="h-3.5 w-3.5" />
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <label className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">Rata Vertikal</label>
+        <div className="flex flex-1 bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+          {([
+            { key: 'top' as const, icon: AlignVerticalJustifyStart, title: 'Teks di atas kotak' },
+            { key: 'center' as const, icon: AlignVerticalJustifyCenter, title: 'Teks di tengah kotak' },
+            { key: 'bottom' as const, icon: AlignVerticalJustifyEnd, title: 'Teks di bawah kotak' },
+          ]).map(({ key, icon: Icon, title }) => (
+            <button key={key} type="button" title={title} onClick={() => update('valign', key)}
+              className={`flex-1 py-1.5 flex items-center justify-center transition-colors cursor-pointer ${cfg.valign === key ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
               <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
