@@ -8,14 +8,39 @@ import QRCode from 'qrcode';
 import {
   CreditCard, Upload, Download, Settings, Eye, Users, Check,
   ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Type,
-  AlignLeft, Sliders, MousePointerClick, Maximize, Printer, FileDown, Scissors, LayoutGrid
+  Sliders, MousePointerClick, Maximize, Printer, FileDown, Scissors, LayoutGrid,
+  Plus, Trash2
 } from 'lucide-react';
 import { computeGrid, pageCountFor, slotPosition, GridLayoutParams } from '../utils/idcardLayout';
 import { PaperLayoutPreview } from '../components/PaperLayoutPreview';
 
 const MM_TO_PX = 96 / 25.4;
 
-interface TextConfig {
+type ParticipantFieldKey = 'id' | 'name' | 'age' | 'gender' | 'group' | 'origin' | 'rfid';
+
+interface FieldOption {
+  key: ParticipantFieldKey;
+  label: string;
+  get: (p: Participant) => string;
+}
+
+/** Semua kolom data peserta yang bisa ditampilkan di kartu. */
+const FIELD_OPTIONS: FieldOption[] = [
+  { key: 'id', label: 'ID Peserta', get: (p) => p.id },
+  { key: 'name', label: 'Nama', get: (p) => p.name },
+  { key: 'age', label: 'Umur', get: (p) => (p.age != null ? `${p.age} tahun` : '-') },
+  { key: 'gender', label: 'Jenis Kelamin', get: (p) => (p.gender === 'P' ? 'Perempuan' : 'Laki-laki') },
+  { key: 'group', label: 'Kelompok', get: (p) => p.group },
+  { key: 'origin', label: 'Keterangan / Asal', get: (p) => p.origin },
+  { key: 'rfid', label: 'Serial RFID', get: (p) => ((p.rfidCardId || '').trim() || '-') },
+];
+
+const fieldLabel = (key: ParticipantFieldKey) => FIELD_OPTIONS.find(o => o.key === key)?.label ?? key;
+const fieldValue = (key: ParticipantFieldKey, p: Participant) => FIELD_OPTIONS.find(o => o.key === key)?.get(p) ?? '';
+
+interface TextFieldConfig {
+  id: string;
+  field: ParticipantFieldKey;
   x: number; y: number; fontSize: number; color: string;
   fontWeight: 'normal' | 'bold'; align: CanvasTextAlign;
   fontFamily: string;
@@ -26,15 +51,12 @@ interface QRConfig {
 }
 
 interface CardConfig {
-  name: TextConfig; group: TextConfig; origin: TextConfig; qr: QRConfig;
+  textFields: TextFieldConfig[];
+  qr: QRConfig;
 }
 
-type DragTarget = 'name' | 'group' | 'origin' | 'qr';
-const ALL_TARGETS: DragTarget[] = ['name', 'group', 'origin', 'qr'];
-
-const TARGET_LABEL: Record<DragTarget, string> = {
-  name: 'Nama', group: 'Kelompok', origin: 'Asal', qr: 'QR Code',
-};
+type DragTarget = string; // id elemen teks, atau 'qr'
+const QR_TARGET = 'qr';
 
 const FONT_OPTIONS: { label: string; value: string }[] = [
   { label: 'Inter / Segoe UI (default)', value: "'Inter', 'Segoe UI', sans-serif" },
@@ -61,9 +83,11 @@ const PAPER_PRESETS: PaperPreset[] = [
 ];
 
 const DEFAULT_CONFIG: CardConfig = {
-  name: { x: 50, y: 180, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
-  group: { x: 50, y: 210, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
-  origin: { x: 50, y: 230, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
+  textFields: [
+    { id: 'name', field: 'name', x: 50, y: 180, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
+    { id: 'group', field: 'group', x: 50, y: 210, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
+    { id: 'origin', field: 'origin', x: 50, y: 230, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
+  ],
   qr: { x: 460, y: 175, size: 110 },
 };
 
@@ -92,19 +116,24 @@ async function qrToDataUrlCached(content: string, size: number): Promise<string>
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
+/** Ambil elemen teks dari config berdasarkan id-nya. */
+function findField(cfg: CardConfig, id: string): TextFieldConfig | undefined {
+  return cfg.textFields.find(f => f.id === id);
+}
+
 /** Kotak (bounding box) elemen pada canvas dalam koordinat pixel canvas. */
 function elementBox(
   cfg: CardConfig, target: DragTarget,
   ctx: CanvasRenderingContext2D, participant: Participant,
 ): { x: number; y: number; w: number; h: number } {
-  if (target === 'qr') {
+  if (target === QR_TARGET) {
     const q = cfg.qr;
     return { x: q.x, y: q.y, w: q.size, h: q.size };
   }
-  const t = cfg[target];
+  const t = findField(cfg, target);
+  if (!t) return { x: 0, y: 0, w: 0, h: 0 };
   ctx.font = `${t.fontWeight} ${t.fontSize}px ${t.fontFamily}`;
-  const text = target === 'origin' ? `Asal: ${participant.origin}`
-    : target === 'name' ? participant.name : participant.group;
+  const text = fieldValue(t.field, participant);
   const tw = ctx.measureText(text).width;
   const th = t.fontSize * 1.25;
   let left = t.x;
@@ -121,7 +150,8 @@ function hitTest(
   const pad = 8;
   let best: DragTarget | null = null;
   let bestArea = Infinity;
-  for (const t of ALL_TARGETS) {
+  const targets: DragTarget[] = [...cfg.textFields.map(f => f.id), QR_TARGET];
+  for (const t of targets) {
     const b = elementBox(cfg, t, ctx, participant);
     if (px >= b.x - pad && px <= b.x + b.w + pad && py >= b.y - pad && py <= b.y + b.h + pad) {
       const area = b.w * b.h;
@@ -166,20 +196,12 @@ const renderCard = async (
 
   ctx.drawImage(template, 0, 0, canvas.width, canvas.height);
 
-  ctx.font = `${config.name.fontWeight} ${config.name.fontSize}px ${config.name.fontFamily}`;
-  ctx.fillStyle = config.name.color;
-  ctx.textAlign = config.name.align;
-  ctx.fillText(participant.name, config.name.x, config.name.y);
-
-  ctx.font = `${config.group.fontWeight} ${config.group.fontSize}px ${config.group.fontFamily}`;
-  ctx.fillStyle = config.group.color;
-  ctx.textAlign = config.group.align;
-  ctx.fillText(participant.group, config.group.x, config.group.y);
-
-  ctx.font = `${config.origin.fontWeight} ${config.origin.fontSize}px ${config.origin.fontFamily}`;
-  ctx.fillStyle = config.origin.color;
-  ctx.textAlign = config.origin.align;
-  ctx.fillText(`Asal: ${participant.origin}`, config.origin.x, config.origin.y);
+  for (const t of config.textFields) {
+    ctx.font = `${t.fontWeight} ${t.fontSize}px ${t.fontFamily}`;
+    ctx.fillStyle = t.color;
+    ctx.textAlign = t.align;
+    ctx.fillText(fieldValue(t.field, participant), t.x, t.y);
+  }
 
   try {
     const qrDataUrl = await qrToDataUrlCached(qrContent(participant), config.qr.size);
@@ -339,19 +361,42 @@ export const AdminIdCard: React.FC = () => {
 
   const updateXY = (t: DragTarget, x: number, y: number) => {
     setConfig(c => {
-      if (t === 'qr') return { ...c, qr: { ...c.qr, x, y } };
-      const key = t as 'name' | 'group' | 'origin';
-      return { ...c, [key]: { ...c[key], x, y } };
+      if (t === QR_TARGET) return { ...c, qr: { ...c.qr, x, y } };
+      return { ...c, textFields: c.textFields.map(f => f.id === t ? { ...f, x, y } : f) };
     });
   };
 
   const updateActiveXY = (axis: 'x' | 'y', value: number) => {
     if (!activeTarget) return;
     setConfig(c => {
-      if (activeTarget === 'qr') return { ...c, qr: { ...c.qr, [axis]: value } };
-      const key = activeTarget as 'name' | 'group' | 'origin';
-      return { ...c, [key]: { ...c[key], [axis]: value } };
+      if (activeTarget === QR_TARGET) return { ...c, qr: { ...c.qr, [axis]: value } };
+      return { ...c, textFields: c.textFields.map(f => f.id === activeTarget ? { ...f, [axis]: value } : f) };
     });
+  };
+
+  const updateFieldData = (id: string, field: ParticipantFieldKey) => {
+    setConfig(c => ({
+      ...c,
+      textFields: c.textFields.map(f => f.id === id ? { ...f, field } : f),
+    }));
+  };
+
+  const addTextField = () => {
+    const newId = `tf-${Date.now()}`;
+    setConfig(c => ({
+      ...c,
+      textFields: [...c.textFields, {
+        id: newId, field: 'name', x: 50, y: 180, fontSize: 16, color: '#1e293b',
+        fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY,
+      }],
+    }));
+    setOpenSection(newId);
+  };
+
+  const removeTextField = (id: string) => {
+    setConfig(c => ({ ...c, textFields: c.textFields.filter(f => f.id !== id) }));
+    if (activeTarget === id) setActiveTarget(null);
+    if (openSection === id) setOpenSection(null);
   };
 
   const downloadSingle = async (p: Participant) => {
@@ -422,7 +467,8 @@ export const AdminIdCard: React.FC = () => {
       e.preventDefault();
       selectTarget(hit);
       setIsDragMoving(true);
-      const el = hit === 'qr' ? config.qr : config[hit as 'name' | 'group' | 'origin'];
+      const el = hit === QR_TARGET ? config.qr : findField(config, hit);
+      if (!el) return;
       dragStart.current = { x: c.x - el.x, y: c.y - el.y };
     } else {
       setActiveTarget(null);
@@ -450,7 +496,7 @@ export const AdminIdCard: React.FC = () => {
     dragStart.current = null;
   };
 
-  const SectionHeader: React.FC<{ title: string; icon: React.ElementType; section: DragTarget }> = ({ title, icon: Icon, section }) => {
+  const SectionHeader: React.FC<{ title: string; icon: React.ElementType; section: DragTarget; onRemove?: () => void }> = ({ title, icon: Icon, section, onRemove }) => {
     const isOpen = openSection === section;
     const isActive = activeTarget === section;
     return (
@@ -462,6 +508,12 @@ export const AdminIdCard: React.FC = () => {
           </div>
           {isOpen ? <ChevronUp className="h-3.5 w-3.5 text-slate-500" /> : <ChevronDown className="h-3.5 w-3.5 text-slate-500" />}
         </button>
+        {onRemove && (
+          <button onClick={onRemove} title={`Hapus elemen ${title}`}
+            className="px-2.5 py-2 rounded-xl text-[10px] font-bold border border-slate-700 bg-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 transition-colors cursor-pointer">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button onClick={() => selectTarget(isActive ? null : section)} title={isActive ? 'Batalkan seleksi' : `Pilih ${title} di canvas`}
           className={`px-2.5 py-2 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer ${isActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
           {isActive ? '✓' : 'Pilih'}
@@ -470,8 +522,10 @@ export const AdminIdCard: React.FC = () => {
     );
   };
 
-  const TextConfigPanel: React.FC<{ cfg: TextConfig; update: (k: keyof TextConfig, v: unknown) => void }> = ({ cfg, update }) => (
+  const TextConfigPanel: React.FC<{ cfg: TextFieldConfig; update: (k: keyof TextFieldConfig, v: unknown) => void }> = ({ cfg, update }) => (
     <div className="space-y-3 px-1 py-3">
+      <SelectRow label="Data" value={cfg.field} options={FIELD_OPTIONS.map(o => ({ label: o.label, value: o.key }))}
+        onChange={v => update('field', v as ParticipantFieldKey)} />
       <SelectRow label="Jenis Font" value={cfg.fontFamily} options={FONT_OPTIONS} onChange={v => update('fontFamily', v)} />
       <div className="grid grid-cols-2 gap-3">
         <div><label className="text-[10px] font-semibold text-slate-500">X (px)</label>
@@ -484,8 +538,8 @@ export const AdminIdCard: React.FC = () => {
             className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
       </div>
       <div><label className="text-[10px] font-semibold text-slate-500">Font Size (px)</label>
-        <input type="number" value={cfg.fontSize} min={8} max={96}
-          onChange={e => update('fontSize', clamp(Number(e.target.value) || 8, 8, 96))}
+        <input type="number" value={cfg.fontSize} min={4}
+          onChange={e => update('fontSize', clamp(Number(e.target.value) || 4, 4, 1000))}
           className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
       <div className="flex items-center gap-3">
         <label className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">Warna</label>
@@ -502,7 +556,12 @@ export const AdminIdCard: React.FC = () => {
     </div>
   );
 
-  const activeCfg = activeTarget === 'qr' ? config.qr : activeTarget ? config[activeTarget as 'name' | 'group' | 'origin'] : null;
+  const activeCfg = activeTarget === QR_TARGET ? config.qr
+    : activeTarget ? findField(config, activeTarget) ?? null : null;
+
+  const activeLabel = activeCfg && activeTarget !== QR_TARGET
+    ? fieldLabel((activeCfg as TextFieldConfig).field)
+    : activeTarget === QR_TARGET ? 'QR Code' : '';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -581,7 +640,7 @@ export const AdminIdCard: React.FC = () => {
                   <div className="rounded-xl border border-blue-500/40 bg-blue-500/5 p-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-blue-300">
-                        Elemen aktif: {TARGET_LABEL[activeTarget]}
+                        Elemen aktif: {activeLabel}
                       </span>
                       <span className="text-[9px] text-slate-500 font-mono">({Math.round(activeCfg.x)}, {Math.round(activeCfg.y)})</span>
                     </div>
@@ -591,26 +650,23 @@ export const AdminIdCard: React.FC = () => {
                 </motion.div>
               )}
 
-              <SectionHeader title="Nama Peserta" icon={Type} section="name" />
-              <AnimatePresence>{openSection === 'name' && (
-                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                  <TextConfigPanel cfg={config.name} update={(k, v) => setConfig(c => ({ ...c, name: { ...c.name, [k]: v } }))} />
-                </motion.div>
-              )}</AnimatePresence>
+              {config.textFields.map(tf => (
+                <div key={tf.id}>
+                  <SectionHeader title={fieldLabel(tf.field)} icon={Type} section={tf.id} onRemove={() => removeTextField(tf.id)} />
+                  <AnimatePresence>{openSection === tf.id && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                      <TextConfigPanel cfg={tf} update={(k, v) => setConfig(c => ({
+                        ...c, textFields: c.textFields.map(f => f.id === tf.id ? { ...f, [k]: v } : f),
+                      }))} />
+                    </motion.div>
+                  )}</AnimatePresence>
+                </div>
+              ))}
 
-              <SectionHeader title="Kelompok" icon={AlignLeft} section="group" />
-              <AnimatePresence>{openSection === 'group' && (
-                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                  <TextConfigPanel cfg={config.group} update={(k, v) => setConfig(c => ({ ...c, group: { ...c.group, [k]: v } }))} />
-                </motion.div>
-              )}</AnimatePresence>
-
-              <SectionHeader title="Asal Daerah" icon={AlignLeft} section="origin" />
-              <AnimatePresence>{openSection === 'origin' && (
-                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                  <TextConfigPanel cfg={config.origin} update={(k, v) => setConfig(c => ({ ...c, origin: { ...c.origin, [k]: v } }))} />
-                </motion.div>
-              )}</AnimatePresence>
+              <button onClick={addTextField}
+                className="w-full px-3 py-2 rounded-xl border border-dashed border-slate-600 text-xs font-bold text-slate-400 hover:text-white hover:border-blue-500/60 hover:bg-blue-500/10 flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+                <Plus className="h-3.5 w-3.5" /> Tambah Elemen Teks
+              </button>
 
               <SectionHeader title="QR Code" icon={Sliders} section="qr" />
               <AnimatePresence>{openSection === 'qr' && (
@@ -713,7 +769,7 @@ export const AdminIdCard: React.FC = () => {
                 <h3 className="text-sm font-bold text-slate-900">4. Preview (WYSIWYG)</h3>
                 {activeTarget && (
                   <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg">
-                    {TARGET_LABEL[activeTarget]} dipilih — geser untuk memindah
+                    {activeLabel} dipilih — geser untuk memindah
                   </span>
                 )}
               </div>
