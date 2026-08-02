@@ -18,6 +18,7 @@ const MM_TO_PX = 96 / 25.4;
 interface TextConfig {
   x: number; y: number; fontSize: number; color: string;
   fontWeight: 'normal' | 'bold'; align: CanvasTextAlign;
+  fontFamily: string;
 }
 
 interface QRConfig {
@@ -35,6 +36,21 @@ const TARGET_LABEL: Record<DragTarget, string> = {
   name: 'Nama', group: 'Kelompok', origin: 'Asal', qr: 'QR Code',
 };
 
+const FONT_OPTIONS: { label: string; value: string }[] = [
+  { label: 'Inter / Segoe UI (default)', value: "'Inter', 'Segoe UI', sans-serif" },
+  { label: 'Poppins', value: "'Poppins', 'Segoe UI', sans-serif" },
+  { label: 'Arial / Helvetica', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Tahoma', value: 'Tahoma, Geneva, sans-serif' },
+  { label: 'Georgia (Serif)', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+  { label: 'Courier New (Mono)', value: '"Courier New", Courier, monospace' },
+  { label: 'Brush Script MT', value: '"Brush Script MT", cursive' },
+  { label: 'Impact (Tebal)', value: 'Impact, "Arial Black", sans-serif' },
+];
+
+const DEFAULT_FONT_FAMILY = "'Inter', 'Segoe UI', sans-serif";
+
 interface PaperPreset { label: string; widthMM: number; heightMM: number; }
 const PAPER_PRESETS: PaperPreset[] = [
   { label: 'A4', widthMM: 210, heightMM: 297 },
@@ -45,23 +61,30 @@ const PAPER_PRESETS: PaperPreset[] = [
 ];
 
 const DEFAULT_CONFIG: CardConfig = {
-  name: { x: 50, y: 180, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'left' },
-  group: { x: 50, y: 210, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left' },
-  origin: { x: 50, y: 230, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left' },
+  name: { x: 50, y: 180, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
+  group: { x: 50, y: 210, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
+  origin: { x: 50, y: 230, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
   qr: { x: 460, y: 175, size: 110 },
 };
+
+/** Isi QR: pakai Serial RFID peserta (agar absen terdeteksi sebagai RFID langsung);
+ *  jika RFID belum dipasang, otomatis fallback ke ID Peserta. */
+function qrContent(p: Participant): string {
+  const rfid = (p.rfidCardId || '').trim();
+  return rfid || p.id;
+}
 
 function qrToDataUrl(text: string, size: number): Promise<string> {
   return QRCode.toDataURL(text, { width: size, margin: 1, color: { dark: '#1e293b', light: 'transparent' } });
 }
 
-// Cache hasil QR per peserta agar drag & render berulang tetap cepat.
+// Cache hasil QR per konten agar drag & render berulang tetap cepat.
 const qrDataUrlCache = new Map<string, string>();
-async function qrToDataUrlCached(id: string, size: number): Promise<string> {
-  const key = `${id}:${size}`;
+async function qrToDataUrlCached(content: string, size: number): Promise<string> {
+  const key = `${content}:${size}`;
   let value = qrDataUrlCache.get(key);
   if (!value) {
-    value = await qrToDataUrl(id, size);
+    value = await qrToDataUrl(content, size);
     qrDataUrlCache.set(key, value);
   }
   return value;
@@ -79,7 +102,7 @@ function elementBox(
     return { x: q.x, y: q.y, w: q.size, h: q.size };
   }
   const t = cfg[target];
-  ctx.font = `${t.fontWeight} ${t.fontSize}px 'Inter', 'Segoe UI', sans-serif`;
+  ctx.font = `${t.fontWeight} ${t.fontSize}px ${t.fontFamily}`;
   const text = target === 'origin' ? `Asal: ${participant.origin}`
     : target === 'name' ? participant.name : participant.group;
   const tw = ctx.measureText(text).width;
@@ -143,23 +166,23 @@ const renderCard = async (
 
   ctx.drawImage(template, 0, 0, canvas.width, canvas.height);
 
-  ctx.font = `${config.name.fontWeight} ${config.name.fontSize}px 'Inter', 'Segoe UI', sans-serif`;
+  ctx.font = `${config.name.fontWeight} ${config.name.fontSize}px ${config.name.fontFamily}`;
   ctx.fillStyle = config.name.color;
   ctx.textAlign = config.name.align;
   ctx.fillText(participant.name, config.name.x, config.name.y);
 
-  ctx.font = `${config.group.fontWeight} ${config.group.fontSize}px 'Inter', 'Segoe UI', sans-serif`;
+  ctx.font = `${config.group.fontWeight} ${config.group.fontSize}px ${config.group.fontFamily}`;
   ctx.fillStyle = config.group.color;
   ctx.textAlign = config.group.align;
   ctx.fillText(participant.group, config.group.x, config.group.y);
 
-  ctx.font = `${config.origin.fontWeight} ${config.origin.fontSize}px 'Inter', 'Segoe UI', sans-serif`;
+  ctx.font = `${config.origin.fontWeight} ${config.origin.fontSize}px ${config.origin.fontFamily}`;
   ctx.fillStyle = config.origin.color;
   ctx.textAlign = config.origin.align;
   ctx.fillText(`Asal: ${participant.origin}`, config.origin.x, config.origin.y);
 
   try {
-    const qrDataUrl = await qrToDataUrlCached(participant.id, config.qr.size);
+    const qrDataUrl = await qrToDataUrlCached(qrContent(participant), config.qr.size);
     const img = new Image();
     await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = reject; img.src = qrDataUrl; });
     ctx.drawImage(img, config.qr.x, config.qr.y, config.qr.size, config.qr.size);
@@ -189,20 +212,6 @@ function drawCropMarks(pdf: jsPDF, x: number, y: number, w: number, h: number) {
 
 // --- UI Helpers ---
 
-interface SliderRowProps {
-  label: string; value: number; min: number; max: number;
-  onChange: (v: number) => void; unit?: string; step?: number;
-}
-const SliderRow: React.FC<SliderRowProps> = ({ label, value, min, max, onChange, unit = '', step = 1 }) => (
-  <div className="flex items-center gap-3">
-    <label className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">{label}</label>
-    <input type="range" min={min} max={max} step={step} value={value}
-      onChange={e => onChange(Number(e.target.value))}
-      className="flex-1 h-1 accent-blue-500" />
-    <span className="text-[11px] font-mono text-slate-300 w-14 text-right">{value}{unit}</span>
-  </div>
-);
-
 interface NumberRowProps {
   label: string; value: number; min: number; max: number;
   onChange: (v: number) => void; unit?: string;
@@ -214,6 +223,20 @@ const NumberRow: React.FC<NumberRowProps> = ({ label, value, min, max, onChange,
       onChange={e => onChange(clamp(Number(e.target.value) || 0, min, max))}
       className="flex-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" />
     <span className="text-[11px] font-mono text-slate-400 w-10 text-right">{unit}</span>
+  </div>
+);
+
+interface SelectRowProps {
+  label: string; value: string; options: { label: string; value: string }[];
+  onChange: (v: string) => void;
+}
+const SelectRow: React.FC<SelectRowProps> = ({ label, value, options, onChange }) => (
+  <div className="flex items-center gap-3">
+    <label className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">{label}</label>
+    <select value={value} onChange={e => onChange(e.target.value)}
+      className="flex-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-semibold text-slate-200 outline-none focus:border-blue-500 cursor-pointer">
+      {options.map(o => <option key={o.value} value={o.value} className="bg-slate-900">{o.label}</option>)}
+    </select>
   </div>
 );
 
@@ -449,9 +472,21 @@ export const AdminIdCard: React.FC = () => {
 
   const TextConfigPanel: React.FC<{ cfg: TextConfig; update: (k: keyof TextConfig, v: unknown) => void }> = ({ cfg, update }) => (
     <div className="space-y-3 px-1 py-3">
-      <SliderRow label="X (kiri)" value={cfg.x} min={0} max={1200} onChange={v => update('x', v)} unit="px" />
-      <SliderRow label="Y (atas)" value={cfg.y} min={0} max={1200} onChange={v => update('y', v)} unit="px" />
-      <SliderRow label="Font Size" value={cfg.fontSize} min={8} max={64} onChange={v => update('fontSize', v)} unit="px" />
+      <SelectRow label="Jenis Font" value={cfg.fontFamily} options={FONT_OPTIONS} onChange={v => update('fontFamily', v)} />
+      <div className="grid grid-cols-2 gap-3">
+        <div><label className="text-[10px] font-semibold text-slate-500">X (px)</label>
+          <input type="number" value={Math.round(cfg.x)} min={0} max={1200}
+            onChange={e => update('x', clamp(Number(e.target.value) || 0, 0, 1200))}
+            className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
+        <div><label className="text-[10px] font-semibold text-slate-500">Y (px)</label>
+          <input type="number" value={Math.round(cfg.y)} min={0} max={1200}
+            onChange={e => update('y', clamp(Number(e.target.value) || 0, 0, 1200))}
+            className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
+      </div>
+      <div><label className="text-[10px] font-semibold text-slate-500">Font Size (px)</label>
+        <input type="number" value={cfg.fontSize} min={8} max={96}
+          onChange={e => update('fontSize', clamp(Number(e.target.value) || 8, 8, 96))}
+          className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
       <div className="flex items-center gap-3">
         <label className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">Warna</label>
         <input type="color" value={cfg.color} onChange={e => update('color', e.target.value)} className="w-8 h-7 rounded cursor-pointer border border-slate-700 bg-slate-800" />
@@ -581,9 +616,24 @@ export const AdminIdCard: React.FC = () => {
               <AnimatePresence>{openSection === 'qr' && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                   <div className="space-y-3 px-1 py-3">
-                    <SliderRow label="X (kiri)" value={config.qr.x} min={0} max={1200} onChange={v => setConfig(c => ({ ...c, qr: { ...c.qr, x: v } }))} unit="px" />
-                    <SliderRow label="Y (atas)" value={config.qr.y} min={0} max={1200} onChange={v => setConfig(c => ({ ...c, qr: { ...c.qr, y: v } }))} unit="px" />
-                    <SliderRow label="Ukuran" value={config.qr.size} min={40} max={400} onChange={v => setConfig(c => ({ ...c, qr: { ...c.qr, size: v } }))} unit="px" />
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-[10px] leading-relaxed text-emerald-300">
+                      QR berisi <b>Serial RFID</b> peserta, jadi saat di-scan saat absen langsung terdeteksi sebagai RFID
+                      (pengganti kartu RFID). Jika RFID belum dipasang, QR otomatis berisi <b>ID Peserta</b> sebagai cadangan.
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className="text-[10px] font-semibold text-slate-500">X (px)</label>
+                        <input type="number" value={Math.round(config.qr.x)} min={0} max={1200}
+                          onChange={e => setConfig(c => ({ ...c, qr: { ...c.qr, x: clamp(Number(e.target.value) || 0, 0, 1200) } }))}
+                          className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
+                      <div><label className="text-[10px] font-semibold text-slate-500">Y (px)</label>
+                        <input type="number" value={Math.round(config.qr.y)} min={0} max={1200}
+                          onChange={e => setConfig(c => ({ ...c, qr: { ...c.qr, y: clamp(Number(e.target.value) || 0, 0, 1200) } }))}
+                          className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
+                    </div>
+                    <div><label className="text-[10px] font-semibold text-slate-500">Ukuran (px)</label>
+                      <input type="number" value={config.qr.size} min={40} max={400}
+                        onChange={e => setConfig(c => ({ ...c, qr: { ...c.qr, size: clamp(Number(e.target.value) || 40, 40, 400) } }))}
+                        className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
                   </div>
                 </motion.div>
               )}</AnimatePresence>
@@ -700,6 +750,19 @@ export const AdminIdCard: React.FC = () => {
                     <MousePointerClick className="h-3 w-3 text-blue-500" />
                     Klik elemen (kotak biru) lalu seret. Posisi X/Y ter-sync otomatis ke panel kiri.
                   </div>
+                  {previewParticipant && (
+                    <div className="mt-2 flex items-center gap-2 text-[10px]">
+                      {previewParticipant.rfidCardId ? (
+                        <span className="font-mono text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-lg font-bold">
+                          QR = RFID: {previewParticipant.rfidCardId}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-lg font-bold">
+                          QR = ID: {previewParticipant.id} (RFID belum dipasang)
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
               {templateImg && previewParticipant && (
@@ -763,7 +826,11 @@ export const AdminIdCard: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-bold text-slate-800">{p.name}</div>
                       <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                        <span className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-600">{p.id}</span>
+                        {p.rfidCardId ? (
+                          <span className="font-mono bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded text-[9px] font-bold" title="QR akan berisi Serial RFID ini">RFID: {p.rfidCardId}</span>
+                        ) : (
+                          <span className="font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[9px] font-bold" title="RFID belum dipasang, QR otomatis berisi ID Peserta">ID: {p.id}</span>
+                        )}
                         <span>•</span><span>{p.group}</span><span>•</span><span>{p.origin}</span>
                       </div>
                     </div>
