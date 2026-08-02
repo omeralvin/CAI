@@ -1,5 +1,8 @@
 export type Role = 'admin' | 'operator';
 
+export type ParticipantCategory = 'PESERTA' | 'PANITIA';
+export type SessionAudience = 'ALL' | 'PESERTA' | 'PANITIA';
+
 export interface User {
   username: string;
   name: string;
@@ -13,7 +16,8 @@ export interface Participant {
   age?: number | null;
   gender: 'L' | 'P';
   group: string; // e.g. "Kelompok 1", "Panitia", "Tamu"
-  origin: string; // e.g. "Kota Kediri", "Surabaya", "Malang"
+  origin: string; // keterangan / jabatan spesifik, e.g. "4S Daerah"
+  category?: ParticipantCategory | null; // "PESERTA" | "PANITIA"
   isCheckedIn: boolean;
   checkInTime?: string | null;
   scannedBy?: string | null;
@@ -25,6 +29,7 @@ export interface CheckInLog {
   participantId: string;
   participantName: string;
   group: string;
+  category?: ParticipantCategory | null;
   timestamp: string;
   operatorName: string;
   status: 'PRESENT' | 'LATE' | 'already_checked_in' | 'error';
@@ -41,6 +46,7 @@ export interface AttendanceSession {
   startTime: string;
   endTime: string;
   name: string;
+  audience?: SessionAudience;
 }
 
 export interface DashboardData {

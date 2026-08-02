@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '../context/AppContext';
 import { Participant, CheckInLog } from '../types';
-import { motion, AnimatePresence } from 'motion/react';
+import { getParticipantCategory, CATEGORY_LABEL } from '../utils/participantCategory';
 import {
   Users,
   Search,
@@ -228,8 +229,8 @@ export const AdminParticipants: React.FC = () => {
 
   const groupsList = useMemo(() => Array.from(new Set(participants.map((p) => p.group))), [participants]);
 
-  const pesertaList = useMemo(() => participants.filter(p => !p.origin?.toLowerCase().includes('panitia')), [participants]);
-  const panitiaList = useMemo(() => participants.filter(p => p.origin?.toLowerCase().includes('panitia')), [participants]);
+  const pesertaList = useMemo(() => participants.filter(p => getParticipantCategory(p.origin) === 'PESERTA'), [participants]);
+  const panitiaList = useMemo(() => participants.filter(p => getParticipantCategory(p.origin) === 'PANITIA'), [participants]);
   const pesertaCount = pesertaList.length;
   const panitiaCount = panitiaList.length;
 
@@ -251,8 +252,8 @@ export const AdminParticipants: React.FC = () => {
         categoryFilter === 'all'
           ? true
           : categoryFilter === 'peserta'
-          ? !p.origin?.toLowerCase().includes('panitia')
-          : p.origin?.toLowerCase().includes('panitia');
+          ? getParticipantCategory(p.origin) === 'PESERTA'
+          : getParticipantCategory(p.origin) === 'PANITIA';
       return matchSearch && matchStatus && matchGroup && matchCategory;
     });
   }, [participants, searchQuery, statusFilter, groupFilter, categoryFilter]);
@@ -822,7 +823,7 @@ export const AdminParticipants: React.FC = () => {
                     : null;
                   return (
                     <tr key={p.id} className={`transition-colors ${
-                      p.origin?.toLowerCase().includes('panitia')
+                      getParticipantCategory(p.origin) === 'PANITIA'
                         ? 'bg-amber-50/40 hover:bg-amber-100/50'
                         : 'hover:bg-slate-50/40'
                     }`}>
@@ -842,7 +843,16 @@ export const AdminParticipants: React.FC = () => {
 
                       {/* Nama */}
                       <td className="px-4 py-3.5 truncate max-w-0">
-                        <div className="font-bold text-slate-900 text-sm truncate">{p.name}</div>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-bold text-slate-900 text-sm truncate">{p.name}</span>
+                          <span className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold leading-none border ${
+                            getParticipantCategory(p.origin) === 'PANITIA'
+                              ? 'bg-amber-100 text-amber-700 border-amber-200'
+                              : 'bg-slate-100 text-slate-500 border-slate-200'
+                          }`}>
+                            {CATEGORY_LABEL[getParticipantCategory(p.origin)]}
+                          </span>
+                        </div>
                         <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">{p.id}</div>
                       </td>
 

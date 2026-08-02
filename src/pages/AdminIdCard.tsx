@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext';
 import { Participant } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { getParticipantCategory, CATEGORY_LABEL } from '../utils/participantCategory';
 import { jsPDF } from 'jspdf';
 import { saveAs } from 'file-saver';
 import QRCode from 'qrcode';
@@ -1482,7 +1483,16 @@ export const AdminIdCard: React.FC = () => {
                           <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)}
                             className="w-4 h-4 accent-blue-600 cursor-pointer" />
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-slate-800">{p.name}</div>
+                            <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                                <span>{p.name}</span>
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold leading-none border ${
+                                  getParticipantCategory(p.origin) === 'PANITIA'
+                                    ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                    : 'bg-slate-100 text-slate-500 border-slate-200'
+                                }`}>
+                                  {CATEGORY_LABEL[getParticipantCategory(p.origin)]}
+                                </span>
+                              </div>
                             <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
                               {p.rfidCardId ? (
                                 <span className="font-mono bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded text-[9px] font-bold" title="QR akan berisi Serial RFID ini">RFID: {p.rfidCardId}</span>

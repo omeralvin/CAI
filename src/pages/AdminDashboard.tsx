@@ -34,7 +34,7 @@ export const AdminDashboard: React.FC = () => {
 
   // Create modal
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', date: '', startTime: '07:30', endTime: '09:00' });
+  const [createForm, setCreateForm] = useState({ name: '', date: '', startTime: '07:30', endTime: '09:00', audience: 'ALL' as const });
   const [submitting, setSubmitting] = useState(false);
 
   // Edit modal
@@ -83,10 +83,11 @@ export const AdminDashboard: React.FC = () => {
         endTime: createForm.endTime,
         dayName: '',
         sessionNumber: 0,
+        audience: createForm.audience,
       });
       if (success) {
         setIsCreateOpen(false);
-        setCreateForm({ name: '', date: '', startTime: '07:30', endTime: '09:00' });
+        setCreateForm({ name: '', date: '', startTime: '07:30', endTime: '09:00', audience: 'ALL' });
         await fetchSessions();
       }
     } catch (err) {
@@ -106,6 +107,7 @@ export const AdminDashboard: React.FC = () => {
       startTime: s.startTime,
       endTime: s.endTime,
       sessionNumber: s.sessionNumber,
+      audience: s.audience || 'ALL',
     });
     setIsEditOpen(true);
   };
@@ -121,6 +123,7 @@ export const AdminDashboard: React.FC = () => {
         startTime: editForm.startTime,
         endTime: editForm.endTime,
         sessionNumber: editForm.sessionNumber,
+        audience: editForm.audience,
       });
       if (success) {
         setIsEditOpen(false);
@@ -247,6 +250,15 @@ export const AdminDashboard: React.FC = () => {
                     <span className={`text-[9px] font-mono ${selectedSessionId === s.id ? 'text-blue-100' : 'text-slate-400'}`}>
                       {s.dayName} &middot; {s.startTime} — {s.endTime}
                     </span>
+                    {s.audience && s.audience !== 'ALL' && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5 ${
+                        s.audience === 'PANITIA'
+                          ? selectedSessionId === s.id ? 'bg-blue-200 text-blue-900' : 'bg-amber-100 text-amber-700'
+                          : selectedSessionId === s.id ? 'bg-blue-200 text-blue-900' : 'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {s.audience === 'PANITIA' ? 'Sesi Panitia' : 'Sesi Peserta'}
+                      </span>
+                    )}
                   </div>
                 </button>
                 {/* Session action buttons */}
@@ -458,6 +470,18 @@ export const AdminDashboard: React.FC = () => {
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
                   />
                 </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Jenis Peserta Sesi</label>
+                  <select
+                    value={createForm.audience}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, audience: e.target.value as 'ALL' | 'PESERTA' | 'PANITIA' }))}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
+                  >
+                    <option value="ALL">Umum / Semua</option>
+                    <option value="PESERTA">Khusus Peserta</option>
+                    <option value="PANITIA">Khusus Panitia</option>
+                  </select>
+                </div>
               </div>
               <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
                 <button
@@ -566,6 +590,18 @@ export const AdminDashboard: React.FC = () => {
                     onChange={(e) => setEditForm((p) => ({ ...p, endTime: e.target.value }))}
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all"
                   />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Jenis Peserta Sesi</label>
+                  <select
+                    value={editForm.audience || 'ALL'}
+                    onChange={(e) => setEditForm((p) => ({ ...p, audience: e.target.value as 'ALL' | 'PESERTA' | 'PANITIA' }))}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all"
+                  >
+                    <option value="ALL">Umum / Semua</option>
+                    <option value="PESERTA">Khusus Peserta</option>
+                    <option value="PANITIA">Khusus Panitia</option>
+                  </select>
                 </div>
               </div>
               <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
