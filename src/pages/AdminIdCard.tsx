@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Participant } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -11,7 +11,7 @@ import {
   Sliders, MousePointerClick, Maximize, Printer, FileDown, Scissors, LayoutGrid,
   Plus, Trash2, AlignLeft, AlignCenter, AlignRight, TextAlignJustify,
   AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
-  Loader2
+  Loader2, Search, X
 } from 'lucide-react';
 import { computeGrid, pageCountFor, slotPosition, GridLayoutParams } from '../utils/idcardLayout';
 import { PaperLayoutPreview } from '../components/PaperLayoutPreview';
@@ -576,6 +576,8 @@ export const AdminIdCard: React.FC = () => {
   const [config, setConfig] = useState<CardConfig>(initial.current.config);
   const [previewParticipant, setPreviewParticipant] = useState<Participant | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [groupBy, setGroupBy] = useState<'none' | 'group' | 'origin'>('none');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>('name');
@@ -619,6 +621,33 @@ export const AdminIdCard: React.FC = () => {
   const gridParams: GridLayoutParams = { paperW, paperH, cardW, cardH, marginTop, marginBottom, marginLeft, marginRight, gap };
   const layout = computeGrid(gridParams);
   const selectedParticipants = participants.filter(p => selectedIds.has(p.id));
+
+  // Peserta setelah difilter pencarian + dikelompokkan (Kelompok / Desa-Asal).
+  const participantGroups = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const source = q
+      ? participants.filter(p =>
+          (p.name || '').toLowerCase().includes(q) ||
+          (p.id || '').toLowerCase().includes(q) ||
+          (p.rfidCardId || '').toLowerCase().includes(q) ||
+          (p.group || '').toLowerCase().includes(q) ||
+          (p.origin || '').toLowerCase().includes(q))
+      : participants;
+
+    if (groupBy === 'none') return [{ label: '', items: source } as { label: string; items: Participant[] }];
+
+    const ordered = new Map<string, Participant[]>();
+    for (const p of source) {
+      const key = (groupBy === 'group' ? p.group : p.origin) || '';
+      const label = key.trim() || (groupBy === 'group' ? 'Tanpa Kelompok' : 'Tanpa Desa');
+      const arr = ordered.get(label) ?? [];
+      arr.push(p);
+      ordered.set(label, arr);
+    }
+    return Array.from(ordered.entries(), ([label, items]) => ({ label, items }));
+  }, [participants, searchQuery, groupBy]);
+
+  const visibleCount = participantGroups.reduce((n, g) => n + g.items.length, 0);
 
   useEffect(() => {
     if (participants.length > 0 && !previewParticipant) {
@@ -1392,33 +1421,76 @@ export const AdminIdCard: React.FC = () => {
                 <Check className="h-3.5 w-3.5" /> {selectedIds.size === participants.length ? 'Batal Semua' : 'Pilih Semua'}
               </button>
             </div>
-            <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
-              {participants.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-xs">Belum ada data peserta.</div>
+            <div className="p-3 border-b border-slate-100 space-y-2">
+              <div className="relative">
+                <Search className="h-3.5 w-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Cari nama / ID / RFID / kelompok / desa..."
+                  className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-slate-400 placeholder:font-normal" />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title="Bersihkan pencarian"><X className="h-3.5 w-3.5" /></button>
+                )}
+              </div>
+              <select value={groupBy} onChange={e => setGroupBy(e.target.value as 'none' | 'group' | 'origin')}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-xs font-semibold text-slate-700 outline-none cursor-pointer">
+                <option value="none">Tampilkan sebagai daftar</option>
+                <option value="group">Kelompokkan per Kelompok</option>
+                <option value="origin">Kelompokkan per Desa / Asal</option>
+              </select>
+            </div>
+            <div className="max-h-72 overflow-y-auto">
+              {visibleCount === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">Tidak ada peserta yang cocok.</div>
               ) : (
-                participants.map(p => (
-                  <label key={p.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 cursor-pointer transition-colors">
-                    <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)}
-                      className="w-4 h-4 accent-blue-600 cursor-pointer" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold text-slate-800">{p.name}</div>
-                      <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                        {p.rfidCardId ? (
-                          <span className="font-mono bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded text-[9px] font-bold" title="QR akan berisi Serial RFID ini">RFID: {p.rfidCardId}</span>
-                        ) : (
-                          <span className="font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[9px] font-bold" title="RFID belum dipasang, QR otomatis berisi ID Peserta">ID: {p.id}</span>
-                        )}
-                        <span>•</span><span>{p.group}</span><span>•</span><span>{p.origin}</span>
-                      </div>
+                participantGroups.map(g => {
+                  const inGroup = g.items.filter(p => selectedIds.has(p.id)).length;
+                  const allChecked = g.items.length > 0 && inGroup === g.items.length;
+                  return (
+                    <div key={g.label || 'all'} className="divide-y divide-slate-100">
+                      {g.label && (
+                        <div className="flex items-center justify-between px-5 py-1.5 bg-slate-50 sticky top-0 z-10">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                            {g.label} <span className="text-slate-400 normal-case">({g.items.length})</span>
+                          </span>
+                          <label className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 cursor-pointer select-none">
+                            <input type="checkbox" checked={allChecked}
+                              onChange={() => setSelectedIds(prev => {
+                                const n = new Set(prev);
+                                if (allChecked) g.items.forEach(p => n.delete(p.id));
+                                else g.items.forEach(p => n.add(p.id));
+                                return n;
+                              })}
+                              className="w-3.5 h-3.5 accent-blue-600 cursor-pointer" />
+                            Pilih grup
+                          </label>
+                        </div>
+                      )}
+                      {g.items.map(p => (
+                        <label key={p.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 cursor-pointer transition-colors">
+                          <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)}
+                            className="w-4 h-4 accent-blue-600 cursor-pointer" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold text-slate-800">{p.name}</div>
+                            <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                              {p.rfidCardId ? (
+                                <span className="font-mono bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded text-[9px] font-bold" title="QR akan berisi Serial RFID ini">RFID: {p.rfidCardId}</span>
+                              ) : (
+                                <span className="font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[9px] font-bold" title="RFID belum dipasang, QR otomatis berisi ID Peserta">ID: {p.id}</span>
+                              )}
+                              <span>•</span><span>{p.group}</span><span>•</span><span>{p.origin}</span>
+                            </div>
+                          </div>
+                          <button type="button" onClick={e => { e.preventDefault(); downloadSingle(p); }}
+                            disabled={!templateImg}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg border border-transparent hover:border-blue-100 transition-all disabled:opacity-30 cursor-pointer"
+                            title="Download ID card ini">
+                            <Download className="h-3.5 w-3.5" />
+                          </button>
+                        </label>
+                      ))}
                     </div>
-                    <button type="button" onClick={e => { e.preventDefault(); downloadSingle(p); }}
-                      disabled={!templateImg}
-                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg border border-transparent hover:border-blue-100 transition-all disabled:opacity-30 cursor-pointer"
-                      title="Download ID card ini">
-                      <Download className="h-3.5 w-3.5" />
-                    </button>
-                  </label>
-                ))
+                  );
+                })
               )}
             </div>
             <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col gap-3">
