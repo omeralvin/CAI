@@ -44,6 +44,7 @@ interface TextFieldConfig {
   x: number; y: number; fontSize: number; color: string;
   fontWeight: 'normal' | 'bold'; align: CanvasTextAlign;
   fontFamily: string;
+  maxWidth: number; // lebar maksimal teks (px); teks panjang akan turun ke baris berikutnya. 0 = tanpa batas.
 }
 
 interface QRConfig {
@@ -84,9 +85,9 @@ const PAPER_PRESETS: PaperPreset[] = [
 
 const DEFAULT_CONFIG: CardConfig = {
   textFields: [
-    { id: 'name', field: 'name', x: 50, y: 180, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
-    { id: 'group', field: 'group', x: 50, y: 210, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
-    { id: 'origin', field: 'origin', x: 50, y: 230, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY },
+    { id: 'name', field: 'name', x: 50, y: 180, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, maxWidth: 360 },
+    { id: 'group', field: 'group', x: 50, y: 210, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, maxWidth: 360 },
+    { id: 'origin', field: 'origin', x: 50, y: 230, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, maxWidth: 360 },
   ],
   qr: { x: 460, y: 175, size: 110 },
 };
@@ -121,6 +122,41 @@ function findField(cfg: CardConfig, id: string): TextFieldConfig | undefined {
   return cfg.textFields.find(f => f.id === id);
 }
 
+const LINE_HEIGHT = 1.25;
+
+/** Pecah teks menjadi beberapa baris sesuai lebar maksimum (px). maxWidth <= 0 = tanpa batas (1 baris). */
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  if (!text) return [''];
+  if (maxWidth <= 0) return [text];
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      line = candidate;
+    } else {
+      if (line) lines.push(line);
+      line = word;
+      if (ctx.measureText(word).width > maxWidth) {
+        // Kata tunggal sangat panjang: potong per karakter.
+        let chunk = '';
+        for (const ch of word) {
+          if (chunk && ctx.measureText(chunk + ch).width > maxWidth) {
+            lines.push(chunk);
+            chunk = ch;
+          } else {
+            chunk += ch;
+          }
+        }
+        line = chunk;
+      }
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 /** Kotak (bounding box) elemen pada canvas dalam koordinat pixel canvas. */
 function elementBox(
   cfg: CardConfig, target: DragTarget,
@@ -133,9 +169,9 @@ function elementBox(
   const t = findField(cfg, target);
   if (!t) return { x: 0, y: 0, w: 0, h: 0 };
   ctx.font = `${t.fontWeight} ${t.fontSize}px ${t.fontFamily}`;
-  const text = fieldValue(t.field, participant);
-  const tw = ctx.measureText(text).width;
-  const th = t.fontSize * 1.25;
+  const lines = wrapText(ctx, fieldValue(t.field, participant), t.maxWidth);
+  const tw = Math.max(...lines.map(l => ctx.measureText(l).width));
+  const th = lines.length * t.fontSize * LINE_HEIGHT;
   let left = t.x;
   if (t.align === 'center') left = t.x - tw / 2;
   else if (t.align === 'right') left = t.x - tw;
@@ -200,7 +236,10 @@ const renderCard = async (
     ctx.font = `${t.fontWeight} ${t.fontSize}px ${t.fontFamily}`;
     ctx.fillStyle = t.color;
     ctx.textAlign = t.align;
-    ctx.fillText(fieldValue(t.field, participant), t.x, t.y);
+    const lines = wrapText(ctx, fieldValue(t.field, participant), t.maxWidth);
+    lines.forEach((line, i) => {
+      ctx.fillText(line, t.x, t.y + i * t.fontSize * LINE_HEIGHT);
+    });
   }
 
   try {
@@ -387,7 +426,7 @@ export const AdminIdCard: React.FC = () => {
       ...c,
       textFields: [...c.textFields, {
         id: newId, field: 'name', x: 50, y: 180, fontSize: 16, color: '#1e293b',
-        fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY,
+        fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, maxWidth: 360,
       }],
     }));
     setOpenSection(newId);
@@ -540,6 +579,10 @@ export const AdminIdCard: React.FC = () => {
       <div><label className="text-[10px] font-semibold text-slate-500">Font Size (px)</label>
         <input type="number" value={cfg.fontSize} min={4}
           onChange={e => update('fontSize', clamp(Number(e.target.value) || 4, 4, 1000))}
+          className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
+      <div><label className="text-[10px] font-semibold text-slate-500">Lebar Maksimal (px) — 0 = tanpa batas</label>
+        <input type="number" value={cfg.maxWidth} min={0}
+          onChange={e => update('maxWidth', clamp(Number(e.target.value) || 0, 0, 2000))}
           className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
       <div className="flex items-center gap-3">
         <label className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">Warna</label>
