@@ -9,7 +9,7 @@ import {
   CreditCard, Upload, Download, Settings, Eye, Users, Check,
   ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Type,
   Sliders, MousePointerClick, Maximize, Printer, FileDown, Scissors, LayoutGrid,
-  Plus, Trash2
+  Plus, Trash2, AlignLeft, AlignCenter, AlignRight
 } from 'lucide-react';
 import { computeGrid, pageCountFor, slotPosition, GridLayoutParams } from '../utils/idcardLayout';
 import { PaperLayoutPreview } from '../components/PaperLayoutPreview';
@@ -735,6 +735,21 @@ export const AdminIdCard: React.FC = () => {
       <SelectRow label="Data" value={cfg.field} options={FIELD_OPTIONS.map(o => ({ label: o.label, value: o.key }))}
         onChange={v => update('field', v as ParticipantFieldKey)} />
       <SelectRow label="Jenis Font" value={cfg.fontFamily} options={FONT_OPTIONS} onChange={v => update('fontFamily', v)} />
+      <div className="flex items-center gap-3">
+        <label className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">Rata Teks</label>
+        <div className="flex flex-1 bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+          {([
+            { key: 'left' as const, icon: AlignLeft, title: 'Rata kiri' },
+            { key: 'center' as const, icon: AlignCenter, title: 'Rata tengah' },
+            { key: 'right' as const, icon: AlignRight, title: 'Rata kanan' },
+          ]).map(({ key, icon: Icon, title }) => (
+            <button key={key} type="button" title={title} onClick={() => update('align', key)}
+              className={`flex-1 py-1.5 flex items-center justify-center transition-colors cursor-pointer ${cfg.align === key ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
+              <Icon className="h-3.5 w-3.5" />
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <div><label className="text-[10px] font-semibold text-slate-500">X (px)</label>
           <input type="number" value={Math.round(cfg.x)} min={0} max={1200}
