@@ -2,14 +2,16 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Participant } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import JSZip from 'jszip';
+import { jsPDF } from 'jspdf';
 import { saveAs } from 'file-saver';
 import QRCode from 'qrcode';
 import {
   CreditCard, Upload, Download, Settings, Eye, Users, Check,
-  ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, PackageOpen,
-  Type, AlignLeft, Sliders, GripHorizontal, Maximize, Printer
+  ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Type,
+  AlignLeft, Sliders, MousePointerClick, Maximize, Printer, FileDown, Scissors, LayoutGrid
 } from 'lucide-react';
+import { computeGrid, pageCountFor, slotPosition, GridLayoutParams } from '../utils/idcardLayout';
+import { PaperLayoutPreview } from '../components/PaperLayoutPreview';
 
 const MM_TO_PX = 96 / 25.4;
 
@@ -26,17 +28,21 @@ interface CardConfig {
   name: TextConfig; group: TextConfig; origin: TextConfig; qr: QRConfig;
 }
 
-type DragTarget = 'name' | 'group' | 'origin' | 'qr' | null;
+type DragTarget = 'name' | 'group' | 'origin' | 'qr';
+const ALL_TARGETS: DragTarget[] = ['name', 'group', 'origin', 'qr'];
+
+const TARGET_LABEL: Record<DragTarget, string> = {
+  name: 'Nama', group: 'Kelompok', origin: 'Asal', qr: 'QR Code',
+};
 
 interface PaperPreset { label: string; widthMM: number; heightMM: number; }
 const PAPER_PRESETS: PaperPreset[] = [
   { label: 'A4', widthMM: 210, heightMM: 297 },
   { label: 'A3', widthMM: 297, heightMM: 420 },
   { label: 'Letter', widthMM: 216, heightMM: 279 },
+  { label: 'F4', widthMM: 215, heightMM: 330 },
   { label: 'Kustom', widthMM: 210, heightMM: 297 },
 ];
-
-const MM = (v: number) => `${v} mm`;
 
 const DEFAULT_CONFIG: CardConfig = {
   name: { x: 50, y: 180, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'left' },
@@ -49,9 +55,85 @@ function qrToDataUrl(text: string, size: number): Promise<string> {
   return QRCode.toDataURL(text, { width: size, margin: 1, color: { dark: '#1e293b', light: 'transparent' } });
 }
 
+// Cache hasil QR per peserta agar drag & render berulang tetap cepat.
+const qrDataUrlCache = new Map<string, string>();
+async function qrToDataUrlCached(id: string, size: number): Promise<string> {
+  const key = `${id}:${size}`;
+  let value = qrDataUrlCache.get(key);
+  if (!value) {
+    value = await qrToDataUrl(id, size);
+    qrDataUrlCache.set(key, value);
+  }
+  return value;
+}
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+/** Kotak (bounding box) elemen pada canvas dalam koordinat pixel canvas. */
+function elementBox(
+  cfg: CardConfig, target: DragTarget,
+  ctx: CanvasRenderingContext2D, participant: Participant,
+): { x: number; y: number; w: number; h: number } {
+  if (target === 'qr') {
+    const q = cfg.qr;
+    return { x: q.x, y: q.y, w: q.size, h: q.size };
+  }
+  const t = cfg[target];
+  ctx.font = `${t.fontWeight} ${t.fontSize}px 'Inter', 'Segoe UI', sans-serif`;
+  const text = target === 'origin' ? `Asal: ${participant.origin}`
+    : target === 'name' ? participant.name : participant.group;
+  const tw = ctx.measureText(text).width;
+  const th = t.fontSize * 1.25;
+  let left = t.x;
+  if (t.align === 'center') left = t.x - tw / 2;
+  else if (t.align === 'right') left = t.x - tw;
+  return { x: left, y: t.y - th, w: tw, h: th };
+}
+
+/** Deteksi elemen mana yang diklik — elemen terkecil yang memuat titik menang. */
+function hitTest(
+  px: number, py: number, cfg: CardConfig,
+  ctx: CanvasRenderingContext2D, participant: Participant,
+): DragTarget | null {
+  const pad = 8;
+  let best: DragTarget | null = null;
+  let bestArea = Infinity;
+  for (const t of ALL_TARGETS) {
+    const b = elementBox(cfg, t, ctx, participant);
+    if (px >= b.x - pad && px <= b.x + b.w + pad && py >= b.y - pad && py <= b.y + b.h + pad) {
+      const area = b.w * b.h;
+      if (area < bestArea) { bestArea = area; best = t; }
+    }
+  }
+  return best;
+}
+
+/** Gambar seleksi (bounding box) untuk elemen aktif. */
+function drawSelectionBox(
+  ctx: CanvasRenderingContext2D, cfg: CardConfig, active: DragTarget, participant: Participant,
+) {
+  const b = elementBox(cfg, active, ctx, participant);
+  const pad = 4;
+  const bx = b.x - pad, by = b.y - pad, bw = b.w + pad * 2, bh = b.h + pad * 2;
+
+  ctx.save();
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = '#2563eb';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bx, by, bw, bh);
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = '#2563eb';
+  const hs = 5;
+  const corners: [number, number][] = [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]];
+  corners.forEach(([hx, hy]) => ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs));
+  ctx.restore();
+}
+
 const renderCard = async (
   canvas: HTMLCanvasElement, template: HTMLImageElement,
   participant: Participant, config: CardConfig,
+  opts?: { active?: DragTarget | null },
 ) => {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -77,103 +159,32 @@ const renderCard = async (
   ctx.fillText(`Asal: ${participant.origin}`, config.origin.x, config.origin.y);
 
   try {
-    const qrDataUrl = await qrToDataUrl(participant.id, config.qr.size);
+    const qrDataUrl = await qrToDataUrlCached(participant.id, config.qr.size);
     const img = new Image();
     await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = reject; img.src = qrDataUrl; });
     ctx.drawImage(img, config.qr.x, config.qr.y, config.qr.size, config.qr.size);
   } catch (e) {
     console.warn('QR generation error for:', participant.id, e);
   }
+
+  if (opts?.active) {
+    drawSelectionBox(ctx, config, opts.active, participant);
+  }
 };
 
-function renderMultiCardSheet(
-  canvas: HTMLCanvasElement, template: HTMLImageElement,
-  participants: Participant[], config: CardConfig,
-  paperW: number, paperH: number, cardW: number, cardH: number,
-  marginTop: number, marginBottom: number, marginLeft: number, marginRight: number,
-  gap: number,
-) {
-  const pw = Math.round(paperW * MM_TO_PX);
-  const ph = Math.round(paperH * MM_TO_PX);
-  const cw = Math.round(cardW * MM_TO_PX);
-  const ch = Math.round(cardH * MM_TO_PX);
-  const mt = Math.round(marginTop * MM_TO_PX);
-  const mb = Math.round(marginBottom * MM_TO_PX);
-  const ml = Math.round(marginLeft * MM_TO_PX);
-  const mr = Math.round(marginRight * MM_TO_PX);
-  const g = Math.round(gap * MM_TO_PX);
-
-  canvas.width = pw;
-  canvas.height = ph;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, pw, ph);
-
-  const cols = Math.floor((pw - ml - mr + g) / (cw + g));
-  const rows = Math.floor((ph - mt - mb + g) / (ch + g));
-
-  const used = participants.slice(0, cols * rows);
-
-  used.forEach((p, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = ml + col * (cw + g);
-    const y = mt + row * (ch + g);
-
-    const cardCanvas = document.createElement('canvas');
-    cardCanvas.width = template.naturalWidth || 640;
-    cardCanvas.height = template.naturalHeight || 400;
-    const cardCtx = cardCanvas.getContext('2d');
-    if (!cardCtx) return;
-
-    cardCtx.drawImage(template, 0, 0, cardCanvas.width, cardCanvas.height);
-
-    cardCtx.font = `${config.name.fontWeight} ${config.name.fontSize}px 'Inter', 'Segoe UI', sans-serif`;
-    cardCtx.fillStyle = config.name.color;
-    cardCtx.textAlign = config.name.align;
-    cardCtx.fillText(p.name, config.name.x, config.name.y);
-
-    cardCtx.font = `${config.group.fontWeight} ${config.group.fontSize}px 'Inter', 'Segoe UI', sans-serif`;
-    cardCtx.fillStyle = config.group.color;
-    cardCtx.textAlign = config.group.align;
-    cardCtx.fillText(p.group, config.group.x, config.group.y);
-
-    cardCtx.font = `${config.origin.fontWeight} ${config.origin.fontSize}px 'Inter', 'Segoe UI', sans-serif`;
-    cardCtx.fillStyle = config.origin.color;
-    cardCtx.textAlign = config.origin.align;
-    cardCtx.fillText(`Asal: ${p.origin}`, config.origin.x, config.origin.y);
-
-    qrToDataUrl(p.id, config.qr.size).then(qrDataUrl => {
-      const qrImg = new Image();
-      qrImg.onload = () => {
-        cardCtx.drawImage(qrImg, config.qr.x, config.qr.y, config.qr.size, config.qr.size);
-        ctx.drawImage(cardCanvas, 0, 0, cardCanvas.width, cardCanvas.height, x, y, cw, ch);
-      };
-      qrImg.src = qrDataUrl;
-    });
-  });
-}
-
-function hitTest(
-  clickX: number, clickY: number,
-  config: CardConfig, templateW: number, templateH: number
-): DragTarget {
-  const threshold = 30;
-  const hits: { target: DragTarget; dist: number }[] = [];
-
-  const check = (target: DragTarget, cx: number, cy: number) => {
-    const d = Math.sqrt((clickX - cx) ** 2 + (clickY - cy) ** 2);
-    if (d < threshold) hits.push({ target, dist: d });
+/** Garis potong (crop marks) berbentuk tanda silang kecil di keempat sudut kartu. */
+function drawCropMarks(pdf: jsPDF, x: number, y: number, w: number, h: number) {
+  const L = 2.5;
+  pdf.setDrawColor(110, 110, 110);
+  pdf.setLineWidth(0.2);
+  const corner = (cx: number, cy: number) => {
+    pdf.line(cx, cy - L, cx, cy + L);
+    pdf.line(cx - L, cy, cx + L, cy);
   };
-  check('name', config.name.x, config.name.y);
-  check('group', config.group.x, config.group.y);
-  check('origin', config.origin.x, config.origin.y);
-  check('qr', config.qr.x + config.qr.size / 2, config.qr.y + config.qr.size / 2);
-
-  hits.sort((a, b) => a.dist - b.dist);
-  return hits.length > 0 ? hits[0].target : null;
+  corner(x, y);
+  corner(x + w, y);
+  corner(x, y + h);
+  corner(x + w, y + h);
 }
 
 // --- UI Helpers ---
@@ -192,22 +203,36 @@ const SliderRow: React.FC<SliderRowProps> = ({ label, value, min, max, onChange,
   </div>
 );
 
+interface NumberRowProps {
+  label: string; value: number; min: number; max: number;
+  onChange: (v: number) => void; unit?: string;
+}
+const NumberRow: React.FC<NumberRowProps> = ({ label, value, min, max, onChange, unit = '' }) => (
+  <div className="flex items-center gap-3">
+    <label className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">{label}</label>
+    <input type="number" value={value} min={min} max={max}
+      onChange={e => onChange(clamp(Number(e.target.value) || 0, min, max))}
+      className="flex-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" />
+    <span className="text-[11px] font-mono text-slate-400 w-10 text-right">{unit}</span>
+  </div>
+);
+
 export const AdminIdCard: React.FC = () => {
   const { participants } = useApp();
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
-  const sheetCanvasRef = useRef<HTMLCanvasElement>(null);
   const [templateImg, setTemplateImg] = useState<HTMLImageElement | null>(null);
   const [templateUrl, setTemplateUrl] = useState<string | null>(null);
   const [config, setConfig] = useState<CardConfig>(DEFAULT_CONFIG);
   const [previewParticipant, setPreviewParticipant] = useState<Participant | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>('name');
   const [toast, setToast] = useState<string | null>(null);
 
-  // Drag state
-  const [dragTarget, setDragTarget] = useState<DragTarget>(null);
+  // Drag & selection state (langsung klik elemen di canvas)
+  const [activeTarget, setActiveTarget] = useState<DragTarget | null>(null);
+  const [hoverTarget, setHoverTarget] = useState<DragTarget | null>(null);
   const [isDragMoving, setIsDragMoving] = useState(false);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
 
@@ -223,9 +248,15 @@ export const AdminIdCard: React.FC = () => {
   const [marginRight, setMarginRight] = useState(10);
   const [gap, setGap] = useState(5);
 
-  // Sheet preview
-  const [sheetParticipants, setSheetParticipants] = useState<Participant[]>([]);
-  const [sheetBlobUrl, setSheetBlobUrl] = useState<string | null>(null);
+  // PDF options
+  const [cropMarks, setCropMarks] = useState(true);
+
+  // Layout preview modal
+  const [showLayoutPreview, setShowLayoutPreview] = useState(false);
+
+  const gridParams: GridLayoutParams = { paperW, paperH, cardW, cardH, marginTop, marginBottom, marginLeft, marginRight, gap };
+  const layout = computeGrid(gridParams);
+  const selectedParticipants = participants.filter(p => selectedIds.has(p.id));
 
   useEffect(() => {
     if (participants.length > 0 && !previewParticipant) {
@@ -240,8 +271,8 @@ export const AdminIdCard: React.FC = () => {
 
   useEffect(() => {
     if (!templateImg || !previewParticipant || !previewCanvasRef.current) return;
-    renderCard(previewCanvasRef.current, templateImg, previewParticipant, config);
-  }, [templateImg, previewParticipant, config]);
+    renderCard(previewCanvasRef.current, templateImg, previewParticipant, config, { active: activeTarget });
+  }, [templateImg, previewParticipant, config, activeTarget]);
 
   const loadTemplate = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -258,7 +289,7 @@ export const AdminIdCard: React.FC = () => {
     if (e.target.files?.[0]) loadTemplate(e.target.files[0]);
   };
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setIsDragging(false);
+    e.preventDefault(); setIsDraggingFile(false);
     if (e.dataTransfer.files[0]) loadTemplate(e.dataTransfer.files[0]);
   };
 
@@ -276,6 +307,30 @@ export const AdminIdCard: React.FC = () => {
     setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
 
+  // --- Seleksi elemen (sync dua arah canvas ⇄ panel) ---
+  const selectTarget = (t: DragTarget | null) => {
+    setActiveTarget(t);
+    setHoverTarget(t);
+    if (t) setOpenSection(t);
+  };
+
+  const updateXY = (t: DragTarget, x: number, y: number) => {
+    setConfig(c => {
+      if (t === 'qr') return { ...c, qr: { ...c.qr, x, y } };
+      const key = t as 'name' | 'group' | 'origin';
+      return { ...c, [key]: { ...c[key], x, y } };
+    });
+  };
+
+  const updateActiveXY = (axis: 'x' | 'y', value: number) => {
+    if (!activeTarget) return;
+    setConfig(c => {
+      if (activeTarget === 'qr') return { ...c, qr: { ...c.qr, [axis]: value } };
+      const key = activeTarget as 'name' | 'group' | 'origin';
+      return { ...c, [key]: { ...c[key], [axis]: value } };
+    });
+  };
+
   const downloadSingle = async (p: Participant) => {
     if (!templateImg) { showToast('Upload template terlebih dahulu!'); return; }
     const canvas = document.createElement('canvas');
@@ -283,133 +338,87 @@ export const AdminIdCard: React.FC = () => {
     canvas.toBlob(blob => { if (blob) saveAs(blob, `IDCard_${p.id}.png`); }, 'image/png');
   };
 
-  const downloadSelected = async () => {
+  // --- Generate PDF siap cetak (multi-halaman, menggantikan .ZIP) ---
+  const generatePdf = async () => {
     if (!templateImg) { showToast('Upload template terlebih dahulu!'); return; }
-    const targets = participants.filter(p => selectedIds.has(p.id));
-    if (targets.length === 0) { showToast('Pilih minimal 1 peserta!'); return; }
+    if (selectedParticipants.length === 0) { showToast('Pilih minimal 1 peserta!'); return; }
     setIsGenerating(true);
-    const zip = new JSZip();
-    for (const p of targets) {
-      const canvas = document.createElement('canvas');
-      await renderCard(canvas, templateImg, p, config);
-      const blob: Blob = await new Promise(res => canvas.toBlob(b => res(b!), 'image/png'));
-      zip.file(`IDCard_${p.id}.png`, blob);
+    try {
+      const totalPages = pageCountFor(selectedParticipants.length, layout.perSheet);
+      const orientation: 'portrait' | 'landscape' = paperW >= paperH ? 'landscape' : 'portrait';
+      const pdf = new jsPDF({ orientation, unit: 'mm', format: [paperW, paperH] });
+
+      // Render semua kartu sekali, lalu susun ke halaman-halaman PDF.
+      const images: string[] = [];
+      for (const p of selectedParticipants) {
+        const canvas = document.createElement('canvas');
+        await renderCard(canvas, templateImg, p, config);
+        images.push(canvas.toDataURL('image/png'));
+      }
+
+      for (let page = 0; page < totalPages; page++) {
+        if (page > 0) pdf.addPage([paperW, paperH], orientation);
+        const start = page * layout.perSheet;
+        const end = Math.min(start + layout.perSheet, images.length);
+        for (let i = start; i < end; i++) {
+          const pos = slotPosition(i - start, gridParams, layout);
+          pdf.addImage(images[i], 'PNG', pos.xMM, pos.yMM, cardW, cardH, undefined, 'FAST');
+          if (cropMarks) drawCropMarks(pdf, pos.xMM, pos.yMM, cardW, cardH);
+        }
+      }
+
+      pdf.save(`IDCards_CAI_${selectedParticipants.length}_peserta.pdf`);
+      showToast(`✅ PDF siap cetak: ${selectedParticipants.length} ID card — ${totalPages} halaman ${paperPreset}`);
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      showToast('Gagal membuat PDF. Coba lagi.');
+    } finally {
+      setIsGenerating(false);
     }
-    const content = await zip.generateAsync({ type: 'blob' });
-    saveAs(content, `IDCards_CAI_${targets.length}_peserta.zip`);
-    setIsGenerating(false);
-    showToast(`✅ ${targets.length} ID card berhasil di-generate!`);
   };
 
-  // --- Paper sheet preview ---
-  const generateSheetPreview = async () => {
-    if (!templateImg) { showToast('Upload template terlebih dahulu!'); return; }
-    const targets = participants.filter(p => selectedIds.has(p.id));
-    if (targets.length === 0) { showToast('Pilih minimal 1 peserta!'); return; }
-
-    const cw = Math.round(cardW * MM_TO_PX);
-    const ch = Math.round(cardH * MM_TO_PX);
-    const pw = Math.round(paperW * MM_TO_PX);
-    const ph = Math.round(paperH * MM_TO_PX);
-    const ml = Math.round(marginLeft * MM_TO_PX);
-    const mr = Math.round(marginRight * MM_TO_PX);
-    const mt = Math.round(marginTop * MM_TO_PX);
-    const mb = Math.round(marginBottom * MM_TO_PX);
-    const g = Math.round(gap * MM_TO_PX);
-
-    const cols = Math.floor((pw - ml - mr + g) / (cw + g));
-    const perSheet = cols * Math.floor((ph - mt - mb + g) / (ch + g));
-
-    const sheetCanvas = document.createElement('canvas');
-    sheetCanvas.width = pw;
-    sheetCanvas.height = ph;
-    const ctx = sheetCanvas.getContext('2d');
-    if (!ctx) return;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, pw, ph);
-
-    const used = targets.slice(0, perSheet);
-    setSheetParticipants(used);
-
-    for (let i = 0; i < used.length; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = ml + col * (cw + g);
-      const y = mt + row * (ch + g);
-
-      const cardCanvas = document.createElement('canvas');
-      cardCanvas.width = templateImg.naturalWidth || 640;
-      cardCanvas.height = templateImg.naturalHeight || 400;
-      await renderCard(cardCanvas, templateImg, used[i], config);
-      ctx.drawImage(cardCanvas, 0, 0, cardCanvas.width, cardCanvas.height, x, y, cw, ch);
-    }
-
-    if (sheetBlobUrl) URL.revokeObjectURL(sheetBlobUrl);
-    const blob: Blob = await new Promise(res => sheetCanvas.toBlob(b => res(b!), 'image/png'));
-    const url = URL.createObjectURL(blob);
-    setSheetBlobUrl(url);
-    showToast(`✅ ${used.length} ID card — ${cols} kolom x ${Math.ceil(used.length / cols)} baris`);
-  };
-
-  const downloadSheet = async () => {
-    if (!sheetBlobUrl) { showToast('Generate sheet preview terlebih dahulu!'); return; }
-    const a = document.createElement('a');
-    a.href = sheetBlobUrl;
-    a.download = `IDCard_Sheet_${paperPreset}.png`;
-    a.click();
-  };
-
-  const printSheet = () => {
-    if (!sheetBlobUrl) { showToast('Generate sheet preview terlebih dahulu!'); return; }
-    const w = window.open('');
-    if (!w) return;
-    w.document.write(`<html><head><title>Cetak ID Card</title><style>body{margin:0;display:flex;justify-content:center}img{max-width:100%}</style></head><body><img src="${sheetBlobUrl}" onload="window.print()" /></body></html>`);
-    w.document.close();
-  };
-
-  // --- Canvas mouse handlers for drag ---
-  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!templateImg || !dragTarget) return;
+  // --- Canvas mouse handlers: klik & seret langsung ---
+  const canvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = previewCanvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const mx = (e.clientX - rect.left) * scaleX;
-    const my = (e.clientY - rect.top) * scaleY;
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height),
+      canvas,
+    };
+  };
 
-    if (dragTarget === 'qr') {
-      const qr = config.qr;
-      if (mx >= qr.x && mx <= qr.x + qr.size && my >= qr.y && my <= qr.y + qr.size) {
-        setIsDragMoving(true);
-        dragStart.current = { x: mx - qr.x, y: my - qr.y };
-      }
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0 || !templateImg || !previewParticipant) return;
+    const c = canvasCoords(e);
+    const ctx = c?.canvas.getContext('2d');
+    if (!c || !ctx) return;
+    const hit = hitTest(c.x, c.y, config, ctx, previewParticipant);
+    if (hit) {
+      e.preventDefault();
+      selectTarget(hit);
+      setIsDragMoving(true);
+      const el = hit === 'qr' ? config.qr : config[hit as 'name' | 'group' | 'origin'];
+      dragStart.current = { x: c.x - el.x, y: c.y - el.y };
     } else {
-      const cfg = config[dragTarget] as TextConfig;
-      if (Math.abs(mx - cfg.x) < 40 && Math.abs(my - cfg.y) < 20) {
-        setIsDragMoving(true);
-        dragStart.current = { x: mx - cfg.x, y: my - cfg.y };
-      }
+      setActiveTarget(null);
     }
   };
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragMoving || !dragTarget || !templateImg || !dragStart.current) return;
-    const canvas = previewCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const mx = (e.clientX - rect.left) * scaleX;
-    const my = (e.clientY - rect.top) * scaleY;
+    if (!templateImg) return;
+    const c = canvasCoords(e);
+    if (!c) return;
 
-    const newX = Math.max(0, Math.min(canvas.width, mx - dragStart.current.x));
-    const newY = Math.max(0, Math.min(canvas.height, my - dragStart.current.y));
-
-    if (dragTarget === 'qr') {
-      setConfig(c => ({ ...c, qr: { ...c.qr, x: newX, y: newY } }));
-    } else {
-      setConfig(c => ({ ...c, [dragTarget]: { ...c[dragTarget], x: newX, y: newY } as TextConfig }));
+    if (isDragMoving && activeTarget && dragStart.current) {
+      const newX = clamp(c.x - dragStart.current.x, 0, c.canvas.width);
+      const newY = clamp(c.y - dragStart.current.y, 0, c.canvas.height);
+      updateXY(activeTarget, newX, newY);
+    } else if (previewParticipant) {
+      const ctx = c.canvas.getContext('2d');
+      if (!ctx) return;
+      setHoverTarget(hitTest(c.x, c.y, config, ctx, previewParticipant));
     }
   };
 
@@ -418,20 +427,30 @@ export const AdminIdCard: React.FC = () => {
     dragStart.current = null;
   };
 
-  const SectionHeader: React.FC<{ title: string; icon: React.ElementType; section: string }> = ({ title, icon: Icon, section }) => (
-    <button onClick={() => setOpenSection(openSection === section ? null : section)}
-      className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 transition-colors">
-      <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
-        <Icon className="h-3.5 w-3.5 text-blue-400" /> {title}
+  const SectionHeader: React.FC<{ title: string; icon: React.ElementType; section: DragTarget }> = ({ title, icon: Icon, section }) => {
+    const isOpen = openSection === section;
+    const isActive = activeTarget === section;
+    return (
+      <div className="flex items-center gap-1.5">
+        <button onClick={() => { setOpenSection(isOpen ? null : section); if (!isOpen) setActiveTarget(section); }}
+          className="flex-1 flex items-center justify-between px-3 py-2 rounded-xl bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 transition-colors">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+            <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-blue-400' : 'text-slate-500'}`} /> {title}
+          </div>
+          {isOpen ? <ChevronUp className="h-3.5 w-3.5 text-slate-500" /> : <ChevronDown className="h-3.5 w-3.5 text-slate-500" />}
+        </button>
+        <button onClick={() => selectTarget(isActive ? null : section)} title={isActive ? 'Batalkan seleksi' : `Pilih ${title} di canvas`}
+          className={`px-2.5 py-2 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer ${isActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
+          {isActive ? '✓' : 'Pilih'}
+        </button>
       </div>
-      {openSection === section ? <ChevronUp className="h-3.5 w-3.5 text-slate-500" /> : <ChevronDown className="h-3.5 w-3.5 text-slate-500" />}
-    </button>
-  );
+    );
+  };
 
   const TextConfigPanel: React.FC<{ cfg: TextConfig; update: (k: keyof TextConfig, v: unknown) => void }> = ({ cfg, update }) => (
     <div className="space-y-3 px-1 py-3">
-      <SliderRow label="X (kiri)" value={cfg.x} min={0} max={800} onChange={v => update('x', v)} unit="px" />
-      <SliderRow label="Y (atas)" value={cfg.y} min={0} max={800} onChange={v => update('y', v)} unit="px" />
+      <SliderRow label="X (kiri)" value={cfg.x} min={0} max={1200} onChange={v => update('x', v)} unit="px" />
+      <SliderRow label="Y (atas)" value={cfg.y} min={0} max={1200} onChange={v => update('y', v)} unit="px" />
       <SliderRow label="Font Size" value={cfg.fontSize} min={8} max={64} onChange={v => update('fontSize', v)} unit="px" />
       <div className="flex items-center gap-3">
         <label className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">Warna</label>
@@ -447,6 +466,8 @@ export const AdminIdCard: React.FC = () => {
       </div>
     </div>
   );
+
+  const activeCfg = activeTarget === 'qr' ? config.qr : activeTarget ? config[activeTarget as 'name' | 'group' | 'origin'] : null;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -466,7 +487,7 @@ export const AdminIdCard: React.FC = () => {
             Cetak ID Card Kustom
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Upload desain template, atur posisi elemen via drag-and-drop, lalu generate ID card.
+            Upload template, geser teks/QR langsung di preview, lalu unduh PDF siap cetak dengan tata letak kertas otomatis.
           </p>
         </div>
         <button onClick={() => setConfig(DEFAULT_CONFIG)}
@@ -487,9 +508,9 @@ export const AdminIdCard: React.FC = () => {
             </div>
             <div className="p-5">
               <label
-                onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-                onDragLeave={() => setIsDragging(false)} onDrop={handleDrop}
-                className={`flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-xl cursor-pointer transition-all ${isDragging ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50/20'}`}>
+                onDragOver={e => { e.preventDefault(); setIsDraggingFile(true); }}
+                onDragLeave={() => setIsDraggingFile(false)} onDrop={handleDrop}
+                className={`flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-xl cursor-pointer transition-all ${isDraggingFile ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50/20'}`}>
                 <input type="file" accept="image/png,image/jpeg,image/jpg" className="hidden" onChange={handleFileInput} />
                 {templateUrl ? (
                   <div className="flex flex-col items-center gap-2">
@@ -514,20 +535,26 @@ export const AdminIdCard: React.FC = () => {
               <h3 className="text-sm font-bold text-slate-100">2. Atur Posisi (Drag & Drop)</h3>
             </div>
             <div className="p-4 space-y-3">
-              {/* Drag mode selector */}
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-                <GripHorizontal className="h-3.5 w-3.5 text-blue-400" />
-                <span className="text-[11px] font-bold text-slate-400">Mode Drag:</span>
-                <div className="flex gap-1">
-                  {(['name', 'group', 'origin', 'qr'] as const).map(t => (
-                    <button key={t} onClick={() => { setDragTarget(dragTarget === t ? null : t); }}
-                      className={`px-2 py-1 text-[10px] font-bold rounded-lg border transition-all ${dragTarget === t ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
-                      {t === 'name' ? 'Nama' : t === 'group' ? 'Kelompok' : t === 'origin' ? 'Asal' : 'QR'}
-                    </button>
-                  ))}
-                </div>
-                {dragTarget && <span className="text-[10px] text-amber-400 ml-1">*drag on canvas</span>}
+              {/* Petunjuk + quick XY sync */}
+              <div className="flex items-start gap-2 px-1 text-[11px] text-slate-400 pb-2 border-b border-slate-800">
+                <MousePointerClick className="h-3.5 w-3.5 text-blue-400 mt-0.5 shrink-0" />
+                <span>Klik & seret langsung elemen pada preview di sebelah kanan, atau atur posisi X/Y di panel ini.</span>
               </div>
+
+              {activeTarget && activeCfg && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="overflow-hidden">
+                  <div className="rounded-xl border border-blue-500/40 bg-blue-500/5 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-blue-300">
+                        Elemen aktif: {TARGET_LABEL[activeTarget]}
+                      </span>
+                      <span className="text-[9px] text-slate-500 font-mono">({Math.round(activeCfg.x)}, {Math.round(activeCfg.y)})</span>
+                    </div>
+                    <NumberRow label="X (px)" value={Math.round(activeCfg.x)} min={0} max={1200} onChange={v => updateActiveXY('x', v)} />
+                    <NumberRow label="Y (px)" value={Math.round(activeCfg.y)} min={0} max={1200} onChange={v => updateActiveXY('y', v)} />
+                  </div>
+                </motion.div>
+              )}
 
               <SectionHeader title="Nama Peserta" icon={Type} section="name" />
               <AnimatePresence>{openSection === 'name' && (
@@ -554,9 +581,9 @@ export const AdminIdCard: React.FC = () => {
               <AnimatePresence>{openSection === 'qr' && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                   <div className="space-y-3 px-1 py-3">
-                    <SliderRow label="X (kiri)" value={config.qr.x} min={0} max={700} onChange={v => setConfig(c => ({ ...c, qr: { ...c.qr, x: v } }))} unit="px" />
-                    <SliderRow label="Y (atas)" value={config.qr.y} min={0} max={700} onChange={v => setConfig(c => ({ ...c, qr: { ...c.qr, y: v } }))} unit="px" />
-                    <SliderRow label="Ukuran" value={config.qr.size} min={40} max={300} onChange={v => setConfig(c => ({ ...c, qr: { ...c.qr, size: v } }))} unit="px" />
+                    <SliderRow label="X (kiri)" value={config.qr.x} min={0} max={1200} onChange={v => setConfig(c => ({ ...c, qr: { ...c.qr, x: v } }))} unit="px" />
+                    <SliderRow label="Y (atas)" value={config.qr.y} min={0} max={1200} onChange={v => setConfig(c => ({ ...c, qr: { ...c.qr, y: v } }))} unit="px" />
+                    <SliderRow label="Ukuran" value={config.qr.size} min={40} max={400} onChange={v => setConfig(c => ({ ...c, qr: { ...c.qr, size: v } }))} unit="px" />
                   </div>
                 </motion.div>
               )}</AnimatePresence>
@@ -580,54 +607,47 @@ export const AdminIdCard: React.FC = () => {
               {paperPreset === 'Kustom' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="text-[10px] font-semibold text-slate-400">Lebar (mm)</label>
-                    <input type="number" value={paperW} onChange={e => setPaperW(Number(e.target.value))} className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
+                    <input type="number" value={paperW} onChange={e => setPaperW(Math.max(50, Number(e.target.value) || 0))} className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
                   <div><label className="text-[10px] font-semibold text-slate-400">Tinggi (mm)</label>
-                    <input type="number" value={paperH} onChange={e => setPaperH(Number(e.target.value))} className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
+                    <input type="number" value={paperH} onChange={e => setPaperH(Math.max(50, Number(e.target.value) || 0))} className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] font-semibold text-slate-400">Lebar ID Card (mm)</label>
-                  <input type="number" value={cardW} onChange={e => setCardW(Number(e.target.value))} min={20} max={200}
+                  <input type="number" value={cardW} onChange={e => setCardW(Math.max(20, Number(e.target.value) || 0))} min={20} max={200}
                     className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
                 <div><label className="text-[10px] font-semibold text-slate-400">Tinggi ID Card (mm)</label>
-                  <input type="number" value={cardH} onChange={e => setCardH(Number(e.target.value))} min={20} max={200}
+                  <input type="number" value={cardH} onChange={e => setCardH(Math.max(20, Number(e.target.value) || 0))} min={20} max={200}
                     className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] font-semibold text-slate-400">Margin Atas (mm)</label>
-                  <input type="number" value={marginTop} onChange={e => setMarginTop(Number(e.target.value))} min={0} max={50}
+                  <input type="number" value={marginTop} onChange={e => setMarginTop(Math.max(0, Number(e.target.value) || 0))} min={0} max={50}
                     className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
                 <div><label className="text-[10px] font-semibold text-slate-400">Margin Bawah (mm)</label>
-                  <input type="number" value={marginBottom} onChange={e => setMarginBottom(Number(e.target.value))} min={0} max={50}
+                  <input type="number" value={marginBottom} onChange={e => setMarginBottom(Math.max(0, Number(e.target.value) || 0))} min={0} max={50}
                     className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
                 <div><label className="text-[10px] font-semibold text-slate-400">Margin Kiri (mm)</label>
-                  <input type="number" value={marginLeft} onChange={e => setMarginLeft(Number(e.target.value))} min={0} max={50}
+                  <input type="number" value={marginLeft} onChange={e => setMarginLeft(Math.max(0, Number(e.target.value) || 0))} min={0} max={50}
                     className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
                 <div><label className="text-[10px] font-semibold text-slate-400">Margin Kanan (mm)</label>
-                  <input type="number" value={marginRight} onChange={e => setMarginRight(Number(e.target.value))} min={0} max={50}
+                  <input type="number" value={marginRight} onChange={e => setMarginRight(Math.max(0, Number(e.target.value) || 0))} min={0} max={50}
                     className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
               </div>
               <div><label className="text-[10px] font-semibold text-slate-400">Jarak Antar ID Card (mm)</label>
-                <input type="number" value={gap} onChange={e => setGap(Number(e.target.value))} min={0} max={30}
+                <input type="number" value={gap} onChange={e => setGap(Math.max(0, Number(e.target.value) || 0))} min={0} max={30}
                   className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none" /></div>
-              {templateImg && (
-                <div className="pt-2 text-[11px] text-blue-600 font-semibold">
-                  {(() => {
-                    const cw = Math.round(cardW * MM_TO_PX);
-                    const ch = Math.round(cardH * MM_TO_PX);
-                    const pw = Math.round(paperW * MM_TO_PX);
-                    const ph = Math.round(paperH * MM_TO_PX);
-                    const ml = Math.round(marginLeft * MM_TO_PX);
-                    const mr = Math.round(marginRight * MM_TO_PX);
-                    const mt = Math.round(marginTop * MM_TO_PX);
-                    const mb = Math.round(marginBottom * MM_TO_PX);
-                    const g = Math.round(gap * MM_TO_PX);
-                    const cols = Math.floor((pw - ml - mr + g) / (cw + g));
-                    const rows = Math.floor((ph - mt - mb + g) / (ch + g));
-                    return <>Muatan: {cols} kolom × {rows} baris = <strong>{cols * rows}</strong> ID card per lembar</>;
-                  })()}
+
+              {/* Kalkulasi otomatis — berapa kartu per lembar */}
+              <div className="mt-2 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5">
+                <div className="flex items-center gap-2 text-blue-700 font-bold">
+                  <LayoutGrid className="h-3.5 w-3.5 shrink-0" />
+                  Satu lembar {paperPreset} muat <span className="text-sm font-black">{layout.perSheet}</span> ID card
                 </div>
-              )}
+                <div className="mt-1 text-[10px] text-slate-500 font-mono">
+                  {layout.cols} kolom × {layout.rows} baris • {cardW}×{cardH} mm • margin {marginTop}/{marginBottom}/{marginLeft}/{marginRight} mm • gap {gap} mm
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -640,10 +660,10 @@ export const AdminIdCard: React.FC = () => {
             <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Eye className="h-4 w-4 text-blue-600" />
-                <h3 className="text-sm font-bold text-slate-900">4. Preview</h3>
-                {dragTarget && (
+                <h3 className="text-sm font-bold text-slate-900">4. Preview (WYSIWYG)</h3>
+                {activeTarget && (
                   <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg">
-                    Drag mode: {dragTarget === 'name' ? 'Nama' : dragTarget === 'group' ? 'Kelompok' : dragTarget === 'origin' ? 'Asal' : 'QR'} — klik & seret di canvas
+                    {TARGET_LABEL[activeTarget]} dipilih — geser untuk memindah
                   </span>
                 )}
               </div>
@@ -663,84 +683,62 @@ export const AdminIdCard: React.FC = () => {
                   <p className="text-sm font-semibold">Upload template untuk melihat preview</p>
                 </div>
               ) : (
-                <div className="overflow-auto rounded-xl border border-slate-100 bg-slate-50">
-                  <canvas ref={previewCanvasRef}
-                    onMouseDown={handleCanvasMouseDown}
-                    onMouseMove={handleCanvasMouseMove}
-                    onMouseUp={handleCanvasMouseUp}
-                    onMouseLeave={handleCanvasMouseUp}
-                    className="max-w-full h-auto block mx-auto rounded-xl shadow"
-                    style={{ imageRendering: 'crisp-edges', cursor: dragTarget ? 'grab' : 'default' }} />
-                </div>
+                <>
+                  <div className="overflow-auto rounded-xl border border-slate-100 bg-slate-50">
+                    <canvas ref={previewCanvasRef}
+                      onMouseDown={handleCanvasMouseDown}
+                      onMouseMove={handleCanvasMouseMove}
+                      onMouseUp={handleCanvasMouseUp}
+                      onMouseLeave={handleCanvasMouseUp}
+                      className="max-w-full h-auto block mx-auto rounded-xl shadow touch-none"
+                      style={{
+                        imageRendering: 'auto',
+                        cursor: isDragMoving ? 'grabbing' : hoverTarget ? 'grab' : 'default',
+                      }} />
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-400">
+                    <MousePointerClick className="h-3 w-3 text-blue-500" />
+                    Klik elemen (kotak biru) lalu seret. Posisi X/Y ter-sync otomatis ke panel kiri.
+                  </div>
+                </>
               )}
               {templateImg && previewParticipant && (
                 <div className="mt-3 flex justify-end">
                   <button onClick={() => downloadSingle(previewParticipant)}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 active:scale-95 cursor-pointer">
-                    <Download className="h-3.5 w-3.5" /> Download Preview
+                    <Download className="h-3.5 w-3.5" /> Download Preview (PNG)
                   </button>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Paper Sheet Preview */}
-          {templateImg && (
-            <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Printer className="h-4 w-4 text-blue-600" />
-                  <h3 className="text-sm font-bold text-slate-900">5. Sheet Preview ({paperPreset})</h3>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={generateSheetPreview} disabled={selectedIds.size === 0}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 active:scale-95 cursor-pointer disabled:cursor-not-allowed">
-                    <Eye className="h-3.5 w-3.5" /> Preview
-                  </button>
-                  {sheetBlobUrl && (
-                    <>
-                      <button onClick={downloadSheet}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 active:scale-95 cursor-pointer">
-                        <Download className="h-3.5 w-3.5" /> Download
-                      </button>
-                      <button onClick={printSheet}
-                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 active:scale-95 cursor-pointer">
-                        <Printer className="h-3.5 w-3.5" /> Cetak
-                      </button>
-                    </>
-                  )}
-                </div>
+          {/* Layout Cetak Preview */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Printer className="h-4 w-4 text-blue-600" />
+                <h3 className="text-sm font-bold text-slate-900">5. Preview Layout Cetak</h3>
               </div>
-              <div className="p-5">
-                {!sheetBlobUrl ? (
-                  <div className="flex flex-col items-center justify-center h-48 border-2 border-dashed border-slate-200 rounded-xl text-slate-400">
-                    <Printer className="h-8 w-8 mb-2" />
-                    <p className="text-xs font-semibold">Pilih peserta & klik Preview untuk melihat tata letak</p>
-                    <p className="text-[10px] text-slate-300 mt-1">
-                      {(() => {
-                        const cw = Math.round(cardW * MM_TO_PX);
-                        const ch = Math.round(cardH * MM_TO_PX);
-                        const pw = Math.round(paperW * MM_TO_PX);
-                        const ph = Math.round(paperH * MM_TO_PX);
-                        const ml = Math.round(marginLeft * MM_TO_PX);
-                        const mr = Math.round(marginRight * MM_TO_PX);
-                        const mt = Math.round(marginTop * MM_TO_PX);
-                        const mb = Math.round(marginBottom * MM_TO_PX);
-                        const g = Math.round(gap * MM_TO_PX);
-                        const cols = Math.max(1, Math.floor((pw - ml - mr + g) / (cw + g)));
-                        const rows = Math.max(1, Math.floor((ph - mt - mb + g) / (ch + g)));
-                        return `${cols}×${rows} = ${cols * rows} ID card per lembar`;
-                      })()}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="overflow-auto rounded-xl border border-slate-100 bg-slate-50">
-                    <img src={sheetBlobUrl} alt="Sheet preview" className="max-w-full h-auto block mx-auto rounded-xl shadow" style={{ imageRendering: 'crisp-edges' }} />
-                  </div>
-                )}
-              </div>
+              <button onClick={() => setShowLayoutPreview(true)}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 active:scale-95 cursor-pointer">
+                <LayoutGrid className="h-3.5 w-3.5" /> Buka Preview Layout
+              </button>
             </div>
-          )}
+            <div className="p-5 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-xs text-slate-600 flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold border border-blue-100">
+                  {layout.perSheet} kartu / lembar
+                </span>
+                <span className="text-slate-500 font-semibold">
+                  {layout.cols}×{layout.rows} • {pageCountFor(selectedParticipants.length, layout.perSheet)} halaman untuk {selectedParticipants.length} peserta
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Simulasi posisi kartu dalam 1 lembar kertas sebelum di-download.
+              </p>
+            </div>
+          </div>
 
           {/* Participant Selection */}
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
@@ -779,18 +777,42 @@ export const AdminIdCard: React.FC = () => {
                 ))
               )}
             </div>
-            <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="text-xs text-slate-500 font-semibold">
-                <span className="font-bold text-slate-800">{selectedIds.size}</span> peserta dipilih dari {participants.length}
+            <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-xs text-slate-500 font-semibold">
+                  <span className="font-bold text-slate-800">{selectedIds.size}</span> peserta dipilih dari {participants.length}
+                  {selectedIds.size > 0 && (
+                    <span className="ml-1">→ {pageCountFor(selectedIds.size, layout.perSheet)} halaman {paperPreset}</span>
+                  )}
+                </div>
+                <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 cursor-pointer select-none">
+                  <input type="checkbox" checked={cropMarks} onChange={e => setCropMarks(e.target.checked)}
+                    className="w-4 h-4 accent-blue-600 cursor-pointer" />
+                  <Scissors className="h-3.5 w-3.5 text-slate-400" />
+                  Tampilkan Crop Marks / Garis Potong
+                </label>
               </div>
-              <button onClick={downloadSelected} disabled={!templateImg || selectedIds.size === 0 || isGenerating}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-md shadow-blue-700/15 active:scale-95 transition-all cursor-pointer disabled:cursor-not-allowed">
-                {isGenerating ? <><RefreshCw className="h-4 w-4 animate-spin" /> Generating...</> : <><PackageOpen className="h-4 w-4" /> Download {selectedIds.size} ID Card (.ZIP)</>}
+              <button onClick={generatePdf} disabled={!templateImg || selectedIds.size === 0 || isGenerating}
+                className="w-full px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-blue-700/15 active:scale-95 transition-all cursor-pointer disabled:cursor-not-allowed">
+                {isGenerating
+                  ? <><RefreshCw className="h-4 w-4 animate-spin" /> Menyusun PDF...</>
+                  : <><FileDown className="h-4 w-4" /> Download PDF Siap Cetak ({selectedIds.size} ID card)</>}
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      <PaperLayoutPreview
+        open={showLayoutPreview}
+        onClose={() => setShowLayoutPreview(false)}
+        paperLabel={paperPreset}
+        paperW={paperW}
+        paperH={paperH}
+        params={gridParams}
+        participants={selectedParticipants}
+        templateUrl={templateUrl}
+      />
     </div>
   );
 };
