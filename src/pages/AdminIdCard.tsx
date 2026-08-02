@@ -771,9 +771,9 @@ export const AdminIdCard: React.FC = () => {
   };
 
   // --- Generate PDF siap cetak (multi-halaman, menggantikan .ZIP) ---
-  const generatePdf = async () => {
+  const generatePdf = async (targets: Participant[] = selectedParticipants) => {
     if (!templateImg) { showToast('Upload template terlebih dahulu!'); return; }
-    const total = selectedParticipants.length;
+    const total = targets.length;
     if (total === 0) { showToast('Pilih minimal 1 peserta!'); return; }
 
     const orientation: 'portrait' | 'landscape' = paperW >= paperH ? 'landscape' : 'portrait';
@@ -792,7 +792,7 @@ export const AdminIdCard: React.FC = () => {
       // sehingga hanya 1 gambar dalam memori pada satu waktu.
       for (let i = 0; i < total; i++) {
         const canvas = document.createElement('canvas');
-        await renderCard(canvas, templateImg, selectedParticipants[i], config, { maxDim: renderMaxDim });
+        await renderCard(canvas, templateImg, targets[i], config, { maxDim: renderMaxDim });
         const dataUrl = canvas.toDataURL('image/png');
         canvas.width = 0;
         canvas.height = 0;
@@ -823,6 +823,14 @@ export const AdminIdCard: React.FC = () => {
       setPdfProgress(null);
       setPdfLoading(null);
     }
+  };
+
+  /** Cetak SEMUA peserta sekaligus: tandai semua lalu langsung generate PDF multi-halaman. */
+  const handlePrintAll = () => {
+    if (!templateImg) { showToast('Upload template terlebih dahulu!'); return; }
+    if (participants.length === 0) { showToast('Belum ada data peserta.'); return; }
+    setSelectedIds(new Set(participants.map(p => p.id)));
+    generatePdf(participants);
   };
 
   // --- Canvas mouse handlers: klik & seret langsung ---
@@ -1399,12 +1407,18 @@ export const AdminIdCard: React.FC = () => {
                   Tampilkan Crop Marks / Garis Potong
                 </label>
               </div>
-              <button onClick={generatePdf} disabled={!templateImg || selectedIds.size === 0 || isGenerating}
-                className="w-full px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-blue-700/15 active:scale-95 transition-all cursor-pointer disabled:cursor-not-allowed">
-                {isGenerating
-                  ? <><RefreshCw className="h-4 w-4 animate-spin" /> Menyusun PDF...</>
-                  : <><FileDown className="h-4 w-4" /> Download PDF Siap Cetak ({selectedIds.size} ID card)</>}
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-3">
+                <button onClick={handlePrintAll} disabled={!templateImg || participants.length === 0 || isGenerating}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-emerald-700/15 active:scale-95 transition-all cursor-pointer disabled:cursor-not-allowed whitespace-nowrap">
+                  <Printer className="h-4 w-4" /> Cetak Semua ({participants.length})
+                </button>
+                <button onClick={() => generatePdf()} disabled={!templateImg || selectedIds.size === 0 || isGenerating}
+                  className="w-full px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-blue-700/15 active:scale-95 transition-all cursor-pointer disabled:cursor-not-allowed">
+                  {isGenerating
+                    ? <><RefreshCw className="h-4 w-4 animate-spin" /> Menyusun PDF...</>
+                    : <><FileDown className="h-4 w-4" /> Download PDF Siap Cetak ({selectedIds.size} ID card)</>}
+                </button>
+              </div>
             </div>
           </div>
         </div>
