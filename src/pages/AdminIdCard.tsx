@@ -140,6 +140,7 @@ const STORAGE_KEY = 'idcard.custom.v1';
 
 interface PersistedPaperState {
   paperPreset: string;
+  orientation: 'portrait' | 'landscape';
   paperW: number; paperH: number;
   cardW: number; cardH: number;
   marginTop: number; marginBottom: number; marginLeft: number; marginRight: number;
@@ -153,7 +154,7 @@ interface PersistedIdCardState {
 }
 
 const PAPER_DEFAULTS: PersistedPaperState = {
-  paperPreset: 'A4', paperW: 210, paperH: 297, cardW: 85, cardH: 54,
+  paperPreset: 'A4', orientation: 'portrait', paperW: 210, paperH: 297, cardW: 85, cardH: 54,
   marginTop: 10, marginBottom: 10, marginLeft: 10, marginRight: 10, gap: 5, cropMarks: true,
 };
 
@@ -213,6 +214,7 @@ function normalizePaper(raw: unknown): PersistedPaperState {
   const num = (v: unknown, d: number) => clamp(Number(v) || d, 0, 1000);
   return {
     paperPreset: typeof p.paperPreset === 'string' ? p.paperPreset : PAPER_DEFAULTS.paperPreset,
+    orientation: p.orientation === 'landscape' ? 'landscape' : 'portrait',
     paperW: Math.max(50, num(p.paperW, PAPER_DEFAULTS.paperW)),
     paperH: Math.max(50, num(p.paperH, PAPER_DEFAULTS.paperH)),
     cardW: Math.max(20, num(p.cardW, PAPER_DEFAULTS.cardW)),
@@ -597,6 +599,7 @@ export const AdminIdCard: React.FC = () => {
 
   // Paper & Card sizes (mm)
   const [paperPreset, setPaperPreset] = useState(initial.current.paper.paperPreset);
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(initial.current.paper.orientation);
   const [paperW, setPaperW] = useState(initial.current.paper.paperW);
   const [paperH, setPaperH] = useState(initial.current.paper.paperH);
   const [cardW, setCardW] = useState(initial.current.paper.cardW);
@@ -638,12 +641,12 @@ export const AdminIdCard: React.FC = () => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         config,
-        paper: { paperPreset, paperW, paperH, cardW, cardH, marginTop, marginBottom, marginLeft, marginRight, gap, cropMarks },
+        paper: { paperPreset, orientation, paperW, paperH, cardW, cardH, marginTop, marginBottom, marginLeft, marginRight, gap, cropMarks },
       } satisfies PersistedIdCardState));
     } catch (err) {
       console.warn('Gagal menyimpan konfigurasi ID card ke localStorage:', err);
     }
-  }, [config, paperPreset, paperW, paperH, cardW, cardH, marginTop, marginBottom, marginLeft, marginRight, gap, cropMarks]);
+  }, [config, paperPreset, orientation, paperW, paperH, cardW, cardH, marginTop, marginBottom, marginLeft, marginRight, gap, cropMarks]);
 
   const loadTemplate = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -672,7 +675,21 @@ export const AdminIdCard: React.FC = () => {
   const handlePresetChange = (preset: string) => {
     setPaperPreset(preset);
     const found = PAPER_PRESETS.find(p => p.label === preset);
-    if (found) { setPaperW(found.widthMM); setPaperH(found.heightMM); }
+    if (found) {
+      setPaperW(found.widthMM);
+      setPaperH(found.heightMM);
+      setOrientation(found.widthMM >= found.heightMM ? 'landscape' : 'portrait');
+    }
+  };
+
+  /** Ganti orientasi kertas: tukar lebar/tinggi bila perlu. */
+  const handleOrientationChange = (o: 'portrait' | 'landscape') => {
+    setOrientation(o);
+    if ((o === 'landscape' && paperW < paperH) || (o === 'portrait' && paperW > paperH)) {
+      setPaperW(paperH);
+      setPaperH(paperW);
+    }
+    if (paperPreset !== 'Kustom') setPaperPreset('Kustom');
   };
 
   const toggleSelectAll = () => {
@@ -776,7 +793,6 @@ export const AdminIdCard: React.FC = () => {
     const total = targets.length;
     if (total === 0) { showToast('Pilih minimal 1 peserta!'); return; }
 
-    const orientation: 'portrait' | 'landscape' = paperW >= paperH ? 'landscape' : 'portrait';
     const totalPages = pageCountFor(total, layout.perSheet);
     // Batasi resolusi render kartu (~300 DPI, maks 2400px) agar template besar
     // tidak meledakkan memori saat render massal.
@@ -1198,6 +1214,19 @@ export const AdminIdCard: React.FC = () => {
                   className="flex-1 px-3 py-1.5 border border-slate-200 rounded-xl bg-white text-xs font-semibold text-slate-700 outline-none">
                   {PAPER_PRESETS.map(p => <option key={p.label} value={p.label}>{p.label} ({p.widthMM}×{p.heightMM} mm)</option>)}
                 </select>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-[11px] font-semibold text-slate-500 w-28 shrink-0">Orientasi</label>
+                <div className="flex flex-1 bg-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                  <button type="button" onClick={() => handleOrientationChange('portrait')}
+                    className={`flex-1 py-1.5 text-xs font-bold transition-colors cursor-pointer ${orientation === 'portrait' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200'}`}>
+                    Potret
+                  </button>
+                  <button type="button" onClick={() => handleOrientationChange('landscape')}
+                    className={`flex-1 py-1.5 text-xs font-bold transition-colors cursor-pointer ${orientation === 'landscape' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200'}`}>
+                    Lanskap
+                  </button>
+                </div>
               </div>
               {paperPreset === 'Kustom' && (
                 <div className="grid grid-cols-2 gap-3">
