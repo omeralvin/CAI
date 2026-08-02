@@ -41,10 +41,18 @@ const fieldValue = (key: ParticipantFieldKey, p: Participant) => FIELD_OPTIONS.f
 interface TextFieldConfig {
   id: string;
   field: ParticipantFieldKey;
-  x: number; y: number; fontSize: number; color: string;
-  fontWeight: 'normal' | 'bold'; align: CanvasTextAlign;
+  x: number; // kiri atas kotak teks
+  y: number; // atas kotak teks
+  width: number; // lebar tetap kotak teks (px); teks panjang wrap ke baris berikutnya
+  fontSize: number;
+  color: string;
+  fontWeight: 'normal' | 'bold';
+  align: CanvasTextAlign;
   fontFamily: string;
-  maxWidth: number; // lebar maksimal teks (px); teks panjang akan turun ke baris berikutnya. 0 = tanpa batas.
+  lineHeight: number; // pengali jarak antar baris
+  padding: number;    // jarak aman di dalam kotak (px)
+  maxLines: number;   // batas jumlah baris (0 = tanpa batas)
+  autofit: boolean;   // kecilkan font otomatis agar teks muat dalam maxLines
 }
 
 interface QRConfig {
@@ -85,9 +93,9 @@ const PAPER_PRESETS: PaperPreset[] = [
 
 const DEFAULT_CONFIG: CardConfig = {
   textFields: [
-    { id: 'name', field: 'name', x: 50, y: 180, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, maxWidth: 360 },
-    { id: 'group', field: 'group', x: 50, y: 210, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, maxWidth: 360 },
-    { id: 'origin', field: 'origin', x: 50, y: 230, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, maxWidth: 360 },
+    { id: 'name', field: 'name', x: 50, y: 150, width: 360, fontSize: 22, color: '#1e293b', fontWeight: 'bold', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, lineHeight: 1.25, padding: 8, maxLines: 0, autofit: false },
+    { id: 'group', field: 'group', x: 50, y: 190, width: 360, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, lineHeight: 1.25, padding: 6, maxLines: 0, autofit: false },
+    { id: 'origin', field: 'origin', x: 50, y: 210, width: 360, fontSize: 13, color: '#475569', fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, lineHeight: 1.25, padding: 6, maxLines: 0, autofit: false },
   ],
   qr: { x: 460, y: 175, size: 110 },
 };
@@ -122,8 +130,6 @@ function findField(cfg: CardConfig, id: string): TextFieldConfig | undefined {
   return cfg.textFields.find(f => f.id === id);
 }
 
-const LINE_HEIGHT = 1.25;
-
 /** Pecah teks menjadi beberapa baris sesuai lebar maksimum (px). maxWidth <= 0 = tanpa batas (1 baris). */
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   if (!text) return [''];
@@ -157,6 +163,30 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines;
 }
 
+interface TextLayout {
+  fontSize: number;
+  lines: string[];
+  lineHeight: number;
+}
+
+/** Hitung tata letak teks aktual di dalam kotak: wrap + autofit font (jika aktif). */
+function computeLayout(t: TextFieldConfig, text: string, ctx: CanvasRenderingContext2D): TextLayout {
+  const availWidth = Math.max(10, t.width - t.padding * 2);
+  let size = t.fontSize;
+  ctx.font = `${t.fontWeight} ${size}px ${t.fontFamily}`;
+  let lines = wrapText(ctx, text, availWidth);
+  if (t.autofit && t.maxLines > 0) {
+    let guard = 0;
+    while (lines.length > t.maxLines && size > 6 && guard < 60) {
+      size -= 0.5;
+      ctx.font = `${t.fontWeight} ${size}px ${t.fontFamily}`;
+      lines = wrapText(ctx, text, availWidth);
+      guard++;
+    }
+  }
+  return { fontSize: size, lines, lineHeight: t.lineHeight };
+}
+
 /** Kotak (bounding box) elemen pada canvas dalam koordinat pixel canvas. */
 function elementBox(
   cfg: CardConfig, target: DragTarget,
@@ -168,14 +198,9 @@ function elementBox(
   }
   const t = findField(cfg, target);
   if (!t) return { x: 0, y: 0, w: 0, h: 0 };
-  ctx.font = `${t.fontWeight} ${t.fontSize}px ${t.fontFamily}`;
-  const lines = wrapText(ctx, fieldValue(t.field, participant), t.maxWidth);
-  const tw = Math.max(...lines.map(l => ctx.measureText(l).width));
-  const th = lines.length * t.fontSize * LINE_HEIGHT;
-  let left = t.x;
-  if (t.align === 'center') left = t.x - tw / 2;
-  else if (t.align === 'right') left = t.x - tw;
-  return { x: left, y: t.y - th, w: tw, h: th };
+  const layout = computeLayout(t, fieldValue(t.field, participant), ctx);
+  const th = t.padding * 2 + layout.lines.length * layout.fontSize * layout.lineHeight;
+  return { x: t.x, y: t.y, w: t.width, h: th };
 }
 
 /** Deteksi elemen mana yang diklik — elemen terkecil yang memuat titik menang. */
@@ -197,7 +222,7 @@ function hitTest(
   return best;
 }
 
-/** Gambar seleksi (bounding box) untuk elemen aktif. */
+/** Gambar seleksi (bounding box) untuk elemen aktif + handle resize kiri/kanan. */
 function drawSelectionBox(
   ctx: CanvasRenderingContext2D, cfg: CardConfig, active: DragTarget, participant: Participant,
 ) {
@@ -212,11 +237,53 @@ function drawSelectionBox(
   ctx.strokeRect(bx, by, bw, bh);
   ctx.setLineDash([]);
 
-  ctx.fillStyle = '#2563eb';
-  const hs = 5;
-  const corners: [number, number][] = [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]];
-  corners.forEach(([hx, hy]) => ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs));
+  if (active === QR_TARGET) {
+    ctx.fillStyle = '#2563eb';
+    const hs = 5;
+    const corners: [number, number][] = [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]];
+    corners.forEach(([hx, hy]) => ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs));
+  } else {
+    // Handle resize kiri & kanan: batang vertikal di tengah tinggi kotak.
+    const hw = 7;
+    const hh = Math.max(16, bh * 0.5);
+    const cy = by + bh / 2;
+    ctx.fillStyle = '#2563eb';
+    ctx.fillRect(bx - hw / 2, cy - hh / 2, hw, hh);
+    ctx.fillRect(bx + bw - hw / 2, cy - hh / 2, hw, hh);
+  }
   ctx.restore();
+}
+
+/** Deteksi pegangan resize (kiri/kanan) pada elemen teks aktif. */
+function hitResizeHandle(
+  px: number, py: number, b: { x: number; y: number; w: number; h: number },
+): 'left' | 'right' | null {
+  const hw = 12;
+  const hh = Math.max(16, b.h * 0.5);
+  const cy = b.y + b.h / 2;
+  const inRangeY = py >= cy - hh / 2 - 4 && py <= cy + hh / 2 + 4;
+  if (inRangeY && Math.abs(px - b.x) <= hw) return 'left';
+  if (inRangeY && Math.abs(px - (b.x + b.w)) <= hw) return 'right';
+  return null;
+}
+
+/** Gambar satu elemen teks di dalam kotaknya (wrap + padding + line-height). */
+function drawTextField(
+  ctx: CanvasRenderingContext2D, t: TextFieldConfig, text: string,
+) {
+  const layout = computeLayout(t, text, ctx);
+  const { fontSize, lines } = layout;
+  ctx.font = `${t.fontWeight} ${fontSize}px ${t.fontFamily}`;
+  ctx.fillStyle = t.color;
+  ctx.textAlign = t.align;
+  const linePx = fontSize * layout.lineHeight;
+  const firstBaseline = t.y + t.padding + fontSize * 0.8;
+  lines.forEach((line, i) => {
+    let x = t.x + t.padding;
+    if (t.align === 'center') x = t.x + t.width / 2;
+    else if (t.align === 'right') x = t.x + t.width - t.padding;
+    ctx.fillText(line, x, firstBaseline + i * linePx);
+  });
 }
 
 const renderCard = async (
@@ -233,13 +300,7 @@ const renderCard = async (
   ctx.drawImage(template, 0, 0, canvas.width, canvas.height);
 
   for (const t of config.textFields) {
-    ctx.font = `${t.fontWeight} ${t.fontSize}px ${t.fontFamily}`;
-    ctx.fillStyle = t.color;
-    ctx.textAlign = t.align;
-    const lines = wrapText(ctx, fieldValue(t.field, participant), t.maxWidth);
-    lines.forEach((line, i) => {
-      ctx.fillText(line, t.x, t.y + i * t.fontSize * LINE_HEIGHT);
-    });
+    drawTextField(ctx, t, fieldValue(t.field, participant));
   }
 
   try {
@@ -319,6 +380,9 @@ export const AdminIdCard: React.FC = () => {
   const [hoverTarget, setHoverTarget] = useState<DragTarget | null>(null);
   const [isDragMoving, setIsDragMoving] = useState(false);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const [resizeMode, setResizeMode] = useState<'left' | 'right' | null>(null);
+  const [hoverHandle, setHoverHandle] = useState<'left' | 'right' | null>(null);
+  const resizeStart = useRef<{ width: number; x: number } | null>(null);
 
   // Paper & Card sizes (mm)
   const [paperPreset, setPaperPreset] = useState('A4');
@@ -420,13 +484,21 @@ export const AdminIdCard: React.FC = () => {
     }));
   };
 
+  const resizeFieldWidth = (id: string, width: number) => {
+    setConfig(c => ({
+      ...c,
+      textFields: c.textFields.map(f => f.id === id ? { ...f, width: Math.round(clamp(width, 40, 2000)) } : f),
+    }));
+  };
+
   const addTextField = () => {
     const newId = `tf-${Date.now()}`;
     setConfig(c => ({
       ...c,
       textFields: [...c.textFields, {
-        id: newId, field: 'name', x: 50, y: 180, fontSize: 16, color: '#1e293b',
-        fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY, maxWidth: 360,
+        id: newId, field: 'name', x: 50, y: 180, width: 360, fontSize: 16, color: '#1e293b',
+        fontWeight: 'normal', align: 'left', fontFamily: DEFAULT_FONT_FAMILY,
+        lineHeight: 1.25, padding: 8, maxLines: 0, autofit: false,
       }],
     }));
     setOpenSection(newId);
@@ -501,6 +573,21 @@ export const AdminIdCard: React.FC = () => {
     const c = canvasCoords(e);
     const ctx = c?.canvas.getContext('2d');
     if (!c || !ctx) return;
+
+    // 1) Prioritaskan handle resize pada elemen teks yang sedang aktif.
+    if (activeTarget && activeTarget !== QR_TARGET && findField(config, activeTarget)) {
+      const b = elementBox(config, activeTarget, ctx, previewParticipant);
+      const handle = hitResizeHandle(c.x, c.y, b);
+      if (handle) {
+        e.preventDefault();
+        setResizeMode(handle);
+        const f = findField(config, activeTarget)!;
+        resizeStart.current = { width: f.width, x: f.x };
+        return;
+      }
+    }
+
+    // 2) Kalau bukan handle, lakukan drag/pilih elemen.
     const hit = hitTest(c.x, c.y, config, ctx, previewParticipant);
     if (hit) {
       e.preventDefault();
@@ -511,6 +598,7 @@ export const AdminIdCard: React.FC = () => {
       dragStart.current = { x: c.x - el.x, y: c.y - el.y };
     } else {
       setActiveTarget(null);
+      setHoverHandle(null);
     }
   };
 
@@ -519,6 +607,19 @@ export const AdminIdCard: React.FC = () => {
     const c = canvasCoords(e);
     if (!c) return;
 
+    // Mode resize lebar kotak teks.
+    if (resizeMode && activeTarget && activeTarget !== QR_TARGET && resizeStart.current) {
+      const f = findField(config, activeTarget);
+      if (!f) return;
+      const start = resizeStart.current;
+      const delta = c.x - (resizeMode === 'right' ? start.x + start.width : start.x);
+      const newWidth = resizeMode === 'right'
+        ? start.width + delta
+        : start.width - delta;
+      resizeFieldWidth(activeTarget, newWidth);
+      return;
+    }
+
     if (isDragMoving && activeTarget && dragStart.current) {
       const newX = clamp(c.x - dragStart.current.x, 0, c.canvas.width);
       const newY = clamp(c.y - dragStart.current.y, 0, c.canvas.height);
@@ -526,13 +627,22 @@ export const AdminIdCard: React.FC = () => {
     } else if (previewParticipant) {
       const ctx = c.canvas.getContext('2d');
       if (!ctx) return;
-      setHoverTarget(hitTest(c.x, c.y, config, ctx, previewParticipant));
+      const hover = hitTest(c.x, c.y, config, ctx, previewParticipant);
+      setHoverTarget(hover);
+      if (hover && hover !== QR_TARGET && findField(config, hover)) {
+        const b = elementBox(config, hover, ctx, previewParticipant);
+        setHoverHandle(hitResizeHandle(c.x, c.y, b));
+      } else {
+        setHoverHandle(null);
+      }
     }
   };
 
   const handleCanvasMouseUp = () => {
     setIsDragMoving(false);
     dragStart.current = null;
+    setResizeMode(null);
+    resizeStart.current = null;
   };
 
   const SectionHeader: React.FC<{ title: string; icon: React.ElementType; section: DragTarget; onRemove?: () => void }> = ({ title, icon: Icon, section, onRemove }) => {
@@ -576,14 +686,40 @@ export const AdminIdCard: React.FC = () => {
             onChange={e => update('y', clamp(Number(e.target.value) || 0, 0, 1200))}
             className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
       </div>
+      <div><label className="text-[10px] font-semibold text-slate-500">Lebar Kotak (px) — teks panjang otomatis wrap ke bawah</label>
+        <input type="number" value={cfg.width} min={40}
+          onChange={e => update('width', clamp(Number(e.target.value) || 40, 40, 2000))}
+          className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
       <div><label className="text-[10px] font-semibold text-slate-500">Font Size (px)</label>
         <input type="number" value={cfg.fontSize} min={4}
           onChange={e => update('fontSize', clamp(Number(e.target.value) || 4, 4, 1000))}
           className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
-      <div><label className="text-[10px] font-semibold text-slate-500">Lebar Maksimal (px) — 0 = tanpa batas</label>
-        <input type="number" value={cfg.maxWidth} min={0}
-          onChange={e => update('maxWidth', clamp(Number(e.target.value) || 0, 0, 2000))}
-          className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
+      <div className="grid grid-cols-2 gap-3">
+        <div><label className="text-[10px] font-semibold text-slate-500">Padding (px)</label>
+          <input type="number" value={cfg.padding} min={0}
+            onChange={e => update('padding', clamp(Number(e.target.value) || 0, 0, 60))}
+            className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
+        <div><label className="text-[10px] font-semibold text-slate-500">Line Height</label>
+          <input type="number" value={cfg.lineHeight} min={0.8} step={0.05}
+            onChange={e => update('lineHeight', clamp(Number(e.target.value) || 1.25, 0.8, 3))}
+            className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 items-end">
+        <div><label className="text-[10px] font-semibold text-slate-500">Maks Baris (0 = tanpa batas)</label>
+          <input type="number" value={cfg.maxLines} min={0}
+            onChange={e => update('maxLines', Math.max(0, Math.round(Number(e.target.value) || 0)))}
+            className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-mono text-slate-200 outline-none focus:border-blue-500" /></div>
+        <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-400 cursor-pointer select-none pb-1.5">
+          <input type="checkbox" checked={cfg.autofit} onChange={e => update('autofit', e.target.checked)}
+            className="w-3.5 h-3.5 accent-blue-500 cursor-pointer" />
+          Autofit Teks
+        </label>
+      </div>
+      {cfg.autofit && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-[10px] leading-relaxed text-emerald-300">
+          Autofit aktif: jika teks melebihi <b>{cfg.maxLines || 'batas'}</b> baris, ukuran font dikurangi otomatis agar teks tetap muat dalam kotak.
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <label className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">Warna</label>
         <input type="color" value={cfg.color} onChange={e => update('color', e.target.value)} className="w-8 h-7 rounded cursor-pointer border border-slate-700 bg-slate-800" />
@@ -842,12 +978,14 @@ export const AdminIdCard: React.FC = () => {
                       className="max-w-full h-auto block mx-auto rounded-xl shadow touch-none"
                       style={{
                         imageRendering: 'auto',
-                        cursor: isDragMoving ? 'grabbing' : hoverTarget ? 'grab' : 'default',
+                        cursor: isDragMoving ? 'grabbing'
+                          : resizeMode || hoverHandle ? 'ew-resize'
+                          : hoverTarget ? 'grab' : 'default',
                       }} />
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-400">
                     <MousePointerClick className="h-3 w-3 text-blue-500" />
-                    Klik elemen (kotak biru) lalu seret. Posisi X/Y ter-sync otomatis ke panel kiri.
+                    Klik elemen lalu seret untuk memindah; tarik handle kiri/kanan kotak untuk mengubah lebarnya (teks panjang otomatis turun ke bawah).
                   </div>
                   {previewParticipant && (
                     <div className="mt-2 flex items-center gap-2 text-[10px]">
