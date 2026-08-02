@@ -37,6 +37,61 @@ Dewi Lestari,28,P,Desa Sumbermulyo,MT Desa
 Bambang Pamungkas,30,L,Desa Tegalrejo,Panitia
 Siti Aminah,24,P,Desa Wonorejo,KI Desa`;
 
+/** Normalisasi teks untuk pembandingan data yang "sama persis". */
+const normalizeKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** Kunci identitas unik satu baris data = Nama + Kelompok + Keterangan. */
+const dupKey = (p: { name: string; group: string; origin: string }) =>
+  `${normalizeKey(p.name)}|${normalizeKey(p.group)}|${normalizeKey(p.origin)}`;
+
+/** Parser CSV sederhana yang mendukung tanda kutip (RFC 4180), CRLF, dan BOM. */
+function parseCSV(text: string): string[][] {
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += ch;
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',' || ch === ';') {
+      row.push(field); field = '';
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      rows.push(row); row = [];
+    } else {
+      field += ch;
+    }
+  }
+  row.push(field);
+  if (row.length > 1 || row[0] !== '') rows.push(row);
+  return rows;
+}
+
+const HEADER_HINTS = ['nama', 'name', 'n', 'umur', 'age', 'gender', 'jk', 'jenis kelamin', 'kelompok', 'group', 'desa', 'keterangan', 'origin', 'asal', 'rfid', 'id'];
+
+function isHeaderRow(fields: string[]): boolean {
+  if (fields.length === 0 || !fields[0]) return false;
+  const first = normalizeKey(fields[0]);
+  const second = normalizeKey(fields[1] || '');
+  if (first.includes('nama') || first.includes('name') || first === 'n') return true;
+  if (second === 'umur' || second === 'age') return true;
+  return fields.some(f => HEADER_HINTS.includes(normalizeKey(f))) && fields.length >= 5;
+}
+
+interface ImportPreviewItem {
+  id: string; name: string; age: number | null; gender: 'L' | 'P';
+  group: string; origin: string;
+  status: 'new' | 'dup-file' | 'exists';
+}
+
 function SortIcon({ dir }: { dir: 'asc' | 'desc' }) {
   return (
     <span className="inline-flex ml-1 align-middle">
@@ -95,9 +150,10 @@ export const AdminParticipants: React.FC = () => {
   const [editSaving, setEditSaving] = useState(false);
 
   const [importText, setImportText] = useState('');
-  const [importPreview, setImportPreview] = useState<Omit<Participant, 'isCheckedIn'>[]>([]);
+  const [importPreview, setImportPreview] = useState<ImportPreviewItem[]>([]);
   const [importError, setImportError] = useState('');
   const [importSuccessMsg, setImportSuccessMsg] = useState('');
+  const [importWarnMsg, setImportWarnMsg] = useState('');
   const [importSaving, setImportSaving] = useState(false);
 
   const [isOtsRfidOpen, setIsOtsRfidOpen] = useState(false);
@@ -308,66 +364,95 @@ export const AdminParticipants: React.FC = () => {
 
   const handleParseCSV = () => {
     setImportError('');
-    setImportPreview([]);
     setImportSuccessMsg('');
+    setImportWarnMsg('');
     if (!importText.trim()) {
       setImportError('Silakan tempel data teks CSV terlebih dahulu.');
+      setImportPreview([]);
       return;
     }
-    const lines = importText.split('\n');
-    const parsedList: Omit<Participant, 'isCheckedIn'>[] = [];
-    let lineErrors = 0;
-    lines.forEach((line) => {
-      const cleanLine = line.trim();
-      if (!cleanLine) return;
-      const columns = cleanLine.split(',');
-      if (columns.length >= 5) {
-        const name = columns[0].trim();
-        const ageRaw = columns[1].trim();
-        const age = ageRaw && !isNaN(parseInt(ageRaw, 10)) ? parseInt(ageRaw, 10) : null;
-        const genderRaw = columns[2].trim().toUpperCase();
-        const group = columns[3].trim();
-        const origin = columns[4] ? columns[4].trim() : '';
-        const gender = genderRaw === 'P' || genderRaw === 'PEREMPUAN' ? 'P' : 'L';
-        if (name && group && origin) {
-          parsedList.push({ id: '', name, age, gender, group, origin });
-        } else {
-          lineErrors++;
-        }
-      } else {
-        lineErrors++;
-      }
+
+    const rawRows = parseCSV(importText);
+    const items: ImportPreviewItem[] = [];
+    let invalidLines = 0;
+    let headerSkipped = false;
+
+    rawRows.forEach((row, rowIdx) => {
+      const fields = row.map(f => f.trim());
+      // Baris kosong dilewati.
+      if (fields.length === 1 && !fields[0]) return;
+      // Deteksi baris header (mis. NAMA,UMUR,GENDER,...) — dilewati.
+      if (!headerSkipped && rowIdx === 0 && isHeaderRow(fields)) { headerSkipped = true; return; }
+      if (fields.length < 5 || !fields[0]) { invalidLines++; return; }
+      const name = fields[0];
+      const ageRaw = fields[1];
+      const age = ageRaw && !isNaN(parseInt(ageRaw, 10)) ? parseInt(ageRaw, 10) : null;
+      const genderRaw = fields[2].toUpperCase();
+      const group = fields[3];
+      const origin = fields[4];
+      const gender = genderRaw === 'P' || genderRaw === 'PEREMPUAN' ? 'P' : 'L';
+      if (!name || !group || !origin) { invalidLines++; return; }
+      items.push({ id: '', name, age, gender, group, origin, status: 'new' });
     });
-    if (parsedList.length === 0) {
-      setImportError('Format CSV tidak valid atau kolom kosong! Periksa contoh format.');
-    } else {
-      setImportPreview(parsedList);
-      if (lineErrors > 0) setImportError(`Ditemukan ${lineErrors} baris tidak valid yang akan dilewati.`);
+
+    if (items.length === 0) {
+      setImportError('Tidak ada data valid ditemukan. Pastikan format: NAMA,UMUR,GENDER,KELOMPOK,KETERANGAN per baris.');
+      setImportPreview([]);
+      return;
+    }
+
+    // Buat ID otomatis & deteksi duplikat (di dalam file + terhadap peserta yang sudah ada).
+    const year = new Date().getFullYear().toString();
+    let maxNum = 0;
+    participants.forEach(p => {
+      const m = p.id.match(/^CAI-(\d{4})-(\d+)$/);
+      if (m && m[1] === year) maxNum = Math.max(maxNum, parseInt(m[2], 10));
+    });
+    const existingKeys = new Set(participants.map(p => dupKey(p)));
+    const seenKeys = new Set<string>();
+    items.forEach((it, i) => {
+      it.id = `CAI-${year}-${String(maxNum + 1 + i).padStart(3, '0')}`;
+      const key = dupKey(it);
+      if (existingKeys.has(key)) it.status = 'exists';
+      else if (seenKeys.has(key)) it.status = 'dup-file';
+      else seenKeys.add(key);
+    });
+
+    setImportPreview(items);
+    if (headerSkipped) setImportSuccessMsg('Baris header terdeteksi dan dilewati.');
+    if (invalidLines > 0) {
+      const msg = `Ditemukan ${invalidLines} baris tidak valid (kolom kurang/kosong) yang dilewati.`;
+      setImportError(prev => prev ? `${prev} ${msg}` : msg);
+    }
+    const dupFile = items.filter(i => i.status === 'dup-file').length;
+    const exists = items.filter(i => i.status === 'exists').length;
+    const total = dupFile + exists;
+    if (total > 0) {
+      setImportWarnMsg(
+        `${exists} data sudah ada sebelumnya & ${dupFile} duplikat di dalam file → tidak akan diimpor. ` +
+        `Data yang benar-benar baru: ${items.length - total}.`
+      );
     }
   };
 
   const handleExecuteImport = async () => {
     if (importPreview.length === 0) return;
+    const newItems = importPreview.filter(i => i.status === 'new');
+    if (newItems.length === 0) {
+      setImportWarnMsg('Semua data sudah ada sebelumnya atau duplikat di dalam file — tidak ada data baru untuk diimpor.');
+      return;
+    }
     setImportSaving(true);
-    const year = new Date().getFullYear().toString();
-    let maxNum = 0;
-    participants.forEach(p => {
-      const match = p.id.match(/^CAI-(\d{4})-(\d+)$/);
-      if (match && match[1] === year) {
-        const num = parseInt(match[2], 10);
-        if (num > maxNum) maxNum = num;
-      }
-    });
-    const dataWithIds = importPreview.map((item, i) => ({
-      ...item,
-      id: `CAI-${year}-${String(maxNum + 1 + i).padStart(3, '0')}`,
-    }));
-    const importedCount = await importParticipants(dataWithIds);
+    const dataToImport = newItems.map(({ status: _status, ...rest }) => rest);
+    const importedCount = await importParticipants(dataToImport);
     setImportSaving(false);
-    const skippedCount = importPreview.length - importedCount;
-    setImportSuccessMsg(`Berhasil mengimpor ${importedCount} peserta baru.`);
-    if (skippedCount > 0)
-      setImportSuccessMsg((prev) => `${prev} (${skippedCount} dilewati karena ID sudah terdaftar).`);
+    const skippedDup = importPreview.length - newItems.length;
+    const failed = newItems.length - importedCount;
+    const parts = [`Berhasil mengimpor ${importedCount} peserta baru.`];
+    if (skippedDup > 0) parts.push(`${skippedDup} dilewati (sudah ada sebelumnya / duplikat).`);
+    if (failed > 0) parts.push(`${failed} gagal disimpan di server.`);
+    setImportSuccessMsg(parts.join(' '));
+    setImportWarnMsg('');
     setImportPreview([]);
     setImportText('');
   };
@@ -520,8 +605,7 @@ export const AdminParticipants: React.FC = () => {
           >
             <Upload className="h-3.5 w-3.5 text-slate-400" />
             Import CSV
-          </button>
-          <button
+          </button>          <button
             onClick={() => setIsAddOpen(true)}
             className="px-4 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-500 transition-all flex items-center gap-1.5 active:scale-95 shadow-md shadow-blue-700/10 cursor-pointer"
           >
@@ -1288,6 +1372,7 @@ export const AdminParticipants: React.FC = () => {
                     setImportPreview([]);
                     setImportError('');
                     setImportSuccessMsg('');
+                    setImportWarnMsg('');
                   }}
                   className="p-1.5 text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg cursor-pointer"
                 >
@@ -1328,6 +1413,12 @@ export const AdminParticipants: React.FC = () => {
                     {importSuccessMsg}
                   </div>
                 )}
+                {importWarnMsg && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-xl flex items-start gap-1.5">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    {importWarnMsg}
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tempel Data CSV</label>
@@ -1354,7 +1445,7 @@ export const AdminParticipants: React.FC = () => {
                       {importSaving ? (
                         <><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg> Mengimpor...</>
                       ) : (
-                        <><Check className="h-3.5 w-3.5" /> Impor {importPreview.length} Peserta ke Sistem</>
+                        <><Check className="h-3.5 w-3.5" /> Impor {importPreview.filter(i => i.status === 'new').length} Peserta Baru</>
                       )}
                     </button>
                   )}
@@ -1363,7 +1454,7 @@ export const AdminParticipants: React.FC = () => {
                 {importPreview.length > 0 && (
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
                     <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 font-bold text-[10px] text-slate-500 uppercase">
-                      Pratinjau Data yang Siap Diimpor
+                      Pratinjau Data ({importPreview.length} baris — {importPreview.filter(i => i.status === 'new').length} baru, {importPreview.filter(i => i.status === 'exists').length} sudah ada, {importPreview.filter(i => i.status === 'dup-file').length} duplikat)
                     </div>
                     <div className="max-h-40 overflow-y-auto">
                           <table className="min-w-full divide-y divide-slate-200 text-[11px] text-left text-slate-600">
@@ -1375,17 +1466,27 @@ export const AdminParticipants: React.FC = () => {
                                 <th className="p-2">Gender</th>
                                 <th className="p-2">Kelompok</th>
                                 <th className="p-2">Keterangan</th>
+                                <th className="p-2">Status</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
                               {importPreview.map((item, index) => (
-                                <tr key={index} className="hover:bg-slate-50">
+                                <tr key={index} className={`hover:bg-slate-50 ${item.status === 'exists' ? 'bg-amber-50/50' : item.status === 'dup-file' ? 'bg-rose-50/50' : ''}`}>
                                   <td className="p-2 font-mono font-bold text-slate-400">{index + 1}</td>
                                   <td className="p-2 font-bold text-slate-900">{item.name}</td>
                                   <td className="p-2 font-mono">{item.age ?? '-'}</td>
                                   <td className="p-2">{item.gender}</td>
                                   <td className="p-2">{item.group}</td>
                                   <td className="p-2">{item.origin}</td>
+                                  <td className="p-2 whitespace-nowrap">
+                                    {item.status === 'new' ? (
+                                      <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">BARU</span>
+                                    ) : item.status === 'exists' ? (
+                                      <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">SUDAH ADA</span>
+                                    ) : (
+                                      <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">DUPLIKAT</span>
+                                    )}
+                                  </td>
                                 </tr>
                               ))}
                         </tbody>
@@ -1404,6 +1505,7 @@ export const AdminParticipants: React.FC = () => {
                     setImportPreview([]);
                     setImportError('');
                     setImportSuccessMsg('');
+                    setImportWarnMsg('');
                   }}
                   className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 cursor-pointer bg-white"
                 >
