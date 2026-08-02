@@ -578,6 +578,7 @@ export const AdminIdCard: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [groupBy, setGroupBy] = useState<'none' | 'group' | 'origin'>('none');
+  const [originFilter, setOriginFilter] = useState<string>('all');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>('name');
@@ -622,17 +623,21 @@ export const AdminIdCard: React.FC = () => {
   const layout = computeGrid(gridParams);
   const selectedParticipants = participants.filter(p => selectedIds.has(p.id));
 
-  // Peserta setelah difilter pencarian + dikelompokkan (Kelompok / Desa-Asal).
+  // Peserta setelah difilter pencarian + kelompokkan (Kelompok / Desa-Asal).
+  const originOptions = useMemo(() =>
+    Array.from(new Set(participants.map(p => (p.origin || '').trim()).filter(Boolean))).sort(),
+  [participants]);
+
   const participantGroups = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const source = q
-      ? participants.filter(p =>
-          (p.name || '').toLowerCase().includes(q) ||
-          (p.id || '').toLowerCase().includes(q) ||
-          (p.rfidCardId || '').toLowerCase().includes(q) ||
-          (p.group || '').toLowerCase().includes(q) ||
-          (p.origin || '').toLowerCase().includes(q))
-      : participants;
+    let source = participants;
+    if (originFilter !== 'all') source = source.filter(p => (p.origin || '').trim() === originFilter);
+    if (q) source = source.filter(p =>
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.id || '').toLowerCase().includes(q) ||
+      (p.rfidCardId || '').toLowerCase().includes(q) ||
+      (p.group || '').toLowerCase().includes(q) ||
+      (p.origin || '').toLowerCase().includes(q));
 
     if (groupBy === 'none') return [{ label: '', items: source } as { label: string; items: Participant[] }];
 
@@ -645,7 +650,7 @@ export const AdminIdCard: React.FC = () => {
       ordered.set(label, arr);
     }
     return Array.from(ordered.entries(), ([label, items]) => ({ label, items }));
-  }, [participants, searchQuery, groupBy]);
+  }, [participants, searchQuery, groupBy, originFilter]);
 
   const visibleCount = participantGroups.reduce((n, g) => n + g.items.length, 0);
 
@@ -1431,12 +1436,19 @@ export const AdminIdCard: React.FC = () => {
                     title="Bersihkan pencarian"><X className="h-3.5 w-3.5" /></button>
                 )}
               </div>
-              <select value={groupBy} onChange={e => setGroupBy(e.target.value as 'none' | 'group' | 'origin')}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-xs font-semibold text-slate-700 outline-none cursor-pointer">
-                <option value="none">Tampilkan sebagai daftar</option>
-                <option value="group">Kelompokkan per Kelompok</option>
-                <option value="origin">Kelompokkan per Desa / Asal</option>
-              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select value={groupBy} onChange={e => setGroupBy(e.target.value as 'none' | 'group' | 'origin')}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-xs font-semibold text-slate-700 outline-none cursor-pointer">
+                  <option value="none">Daftar</option>
+                  <option value="group">Per Kelompok</option>
+                  <option value="origin">Per Desa / Asal</option>
+                </select>
+                <select value={originFilter} onChange={e => setOriginFilter(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-xs font-semibold text-slate-700 outline-none cursor-pointer">
+                  <option value="all">Semua Keterangan</option>
+                  {originOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
             </div>
             <div className="max-h-72 overflow-y-auto">
               {visibleCount === 0 ? (
