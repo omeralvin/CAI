@@ -29,8 +29,11 @@ export interface SlotPosition {
  */
 export function computeGrid(params: GridLayoutParams): GridLayout {
   const { paperW, paperH, cardW, cardH, marginTop, marginBottom, marginLeft, marginRight, gap } = params;
-  const cols = Math.max(1, Math.floor((paperW - marginLeft - marginRight + gap) / (cardW + gap)));
-  const rows = Math.max(1, Math.floor((paperH - marginTop - marginBottom + gap) / (cardH + gap)));
+  // Guard: hindari pembagian dengan nol bila kartu/gap tidak wajar.
+  const stepX = Math.max(1, cardW + gap);
+  const stepY = Math.max(1, cardH + gap);
+  const cols = Math.max(1, Math.floor((paperW - marginLeft - marginRight + gap) / stepX));
+  const rows = Math.max(1, Math.floor((paperH - marginTop - marginBottom + gap) / stepY));
   return {
     cols,
     rows,

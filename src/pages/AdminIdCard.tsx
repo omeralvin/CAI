@@ -10,7 +10,8 @@ import {
   ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Type,
   Sliders, MousePointerClick, Maximize, Printer, FileDown, Scissors, LayoutGrid,
   Plus, Trash2, AlignLeft, AlignCenter, AlignRight, TextAlignJustify,
-  AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd
+  AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
+  Loader2
 } from 'lucide-react';
 import { computeGrid, pageCountFor, slotPosition, GridLayoutParams } from '../utils/idcardLayout';
 import { PaperLayoutPreview } from '../components/PaperLayoutPreview';
@@ -132,6 +133,114 @@ async function qrToDataUrlCached(content: string, size: number): Promise<string>
 }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+// --- Persistence (localStorage) ---
+
+const STORAGE_KEY = 'idcard.custom.v1';
+
+interface PersistedPaperState {
+  paperPreset: string;
+  paperW: number; paperH: number;
+  cardW: number; cardH: number;
+  marginTop: number; marginBottom: number; marginLeft: number; marginRight: number;
+  gap: number;
+  cropMarks: boolean;
+}
+
+interface PersistedIdCardState {
+  config: CardConfig;
+  paper: PersistedPaperState;
+}
+
+const PAPER_DEFAULTS: PersistedPaperState = {
+  paperPreset: 'A4', paperW: 210, paperH: 297, cardW: 85, cardH: 54,
+  marginTop: 10, marginBottom: 10, marginLeft: 10, marginRight: 10, gap: 5, cropMarks: true,
+};
+
+const ALIGN_KEYS: TextAlign[] = ['left', 'center', 'right', 'justify'];
+const VALIGN_KEYS: VAlign[] = ['top', 'center', 'bottom'];
+
+/** Salin konfigurasi agar state tidak pernah menunjuk objek yang sama dengan default. */
+function cloneConfig(cfg: CardConfig): CardConfig {
+  return {
+    textFields: cfg.textFields.map(f => ({ ...f })),
+    qr: { ...cfg.qr },
+  };
+}
+
+/** Normalisasi satu elemen teks dari data tersimpan (isi field yang mungkin belum ada). */
+function makeTextField(raw: Partial<TextFieldConfig>): TextFieldConfig {
+  return {
+    id: raw.id || `tf-${Date.now()}`,
+    field: (raw.field as ParticipantFieldKey) || 'name',
+    x: clamp(Number(raw.x) || 0, 0, 2000),
+    y: clamp(Number(raw.y) || 0, 0, 2000),
+    width: clamp(Number(raw.width) || 360, 40, 2000),
+    height: clamp(Number(raw.height) || 0, 0, 2000),
+    fontSize: clamp(Number(raw.fontSize) || 16, 4, 1000),
+    color: typeof raw.color === 'string' ? raw.color : '#1e293b',
+    fontWeight: raw.fontWeight === 'bold' ? 'bold' : 'normal',
+    align: ALIGN_KEYS.includes(raw.align as TextAlign) ? (raw.align as TextAlign) : 'left',
+    valign: VALIGN_KEYS.includes(raw.valign as VAlign) ? (raw.valign as VAlign) : 'center',
+    fontFamily: typeof raw.fontFamily === 'string' ? raw.fontFamily : DEFAULT_FONT_FAMILY,
+    lineHeight: clamp(Number(raw.lineHeight) || 1.25, 0.8, 3),
+    padding: clamp(Number(raw.padding) || 8, 0, 60),
+    maxLines: Math.max(0, Math.round(Number(raw.maxLines) || 0)),
+    autofit: !!raw.autofit,
+  };
+}
+
+/** Normalisasi konfigurasi layout tersimpan; null jika bentuk data tidak valid. */
+function normalizeConfig(raw: unknown): CardConfig | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const c = raw as { textFields?: unknown; qr?: unknown };
+  if (!Array.isArray(c.textFields) || !c.qr || typeof c.qr !== 'object') return null;
+  const qr = c.qr as Partial<QRConfig>;
+  return {
+    textFields: c.textFields.map(f => makeTextField((f && typeof f === 'object' ? f as Partial<TextFieldConfig> : {}))),
+    qr: {
+      x: clamp(Number(qr.x) || 0, 0, 2000),
+      y: clamp(Number(qr.y) || 0, 0, 2000),
+      size: clamp(Number(qr.size) || 110, 40, 600),
+    },
+  };
+}
+
+/** Normalisasi pengaturan kertas/kartu tersimpan. */
+function normalizePaper(raw: unknown): PersistedPaperState {
+  if (!raw || typeof raw !== 'object') return { ...PAPER_DEFAULTS };
+  const p = raw as Partial<PersistedPaperState>;
+  const num = (v: unknown, d: number) => clamp(Number(v) || d, 0, 1000);
+  return {
+    paperPreset: typeof p.paperPreset === 'string' ? p.paperPreset : PAPER_DEFAULTS.paperPreset,
+    paperW: Math.max(50, num(p.paperW, PAPER_DEFAULTS.paperW)),
+    paperH: Math.max(50, num(p.paperH, PAPER_DEFAULTS.paperH)),
+    cardW: Math.max(20, num(p.cardW, PAPER_DEFAULTS.cardW)),
+    cardH: Math.max(20, num(p.cardH, PAPER_DEFAULTS.cardH)),
+    marginTop: Math.max(0, num(p.marginTop, PAPER_DEFAULTS.marginTop)),
+    marginBottom: Math.max(0, num(p.marginBottom, PAPER_DEFAULTS.marginBottom)),
+    marginLeft: Math.max(0, num(p.marginLeft, PAPER_DEFAULTS.marginLeft)),
+    marginRight: Math.max(0, num(p.marginRight, PAPER_DEFAULTS.marginRight)),
+    gap: Math.max(0, num(p.gap, PAPER_DEFAULTS.gap)),
+    cropMarks: typeof p.cropMarks === 'boolean' ? p.cropMarks : PAPER_DEFAULTS.cropMarks,
+  };
+}
+
+/** Baca seluruh state tersimpan; jika kosong/rusak, kembalikan default. */
+function loadPersisted(): PersistedIdCardState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { config: cloneConfig(DEFAULT_CONFIG), paper: { ...PAPER_DEFAULTS } };
+    const parsed = JSON.parse(raw) as { config?: unknown; paper?: unknown };
+    return {
+      config: normalizeConfig(parsed.config) ?? cloneConfig(DEFAULT_CONFIG),
+      paper: normalizePaper(parsed.paper),
+    };
+  } catch (err) {
+    console.warn('Gagal memuat konfigurasi ID card dari localStorage:', err);
+    return { config: cloneConfig(DEFAULT_CONFIG), paper: { ...PAPER_DEFAULTS } };
+  }
+}
 
 /** Ambil elemen teks dari config berdasarkan id-nya. */
 function findField(cfg: CardConfig, id: string): TextFieldConfig | undefined {
@@ -313,45 +422,52 @@ function drawJustifiedLine(ctx: CanvasRenderingContext2D, line: string, x: numbe
 
 /** Gambar satu elemen teks di dalam kotaknya (wrap + padding + line-height + alignment). */
 function drawTextField(
-  ctx: CanvasRenderingContext2D, t: TextFieldConfig, text: string,
+  ctx: CanvasRenderingContext2D, t: TextFieldConfig, text: string, scale = 1,
 ) {
-  const layout = computeLayout(t, text, ctx);
+  // Bila canvas dirender pada resolusi lebih kecil (mis. PDF), skala semua geometri.
+  const st: TextFieldConfig = {
+    ...t,
+    x: t.x * scale, y: t.y * scale,
+    width: t.width * scale, height: t.height * scale,
+    fontSize: t.fontSize * scale, padding: t.padding * scale,
+  };
+  const layout = computeLayout(st, text, ctx);
   const { fontSize, lines } = layout;
-  ctx.font = `${t.fontWeight} ${fontSize}px ${t.fontFamily}`;
-  ctx.fillStyle = t.color;
+  ctx.font = `${st.fontWeight} ${fontSize}px ${st.fontFamily}`;
+  ctx.fillStyle = st.color;
 
-  const clipToBox = t.height > 0;
+  const clipToBox = st.height > 0;
   if (clipToBox) {
     ctx.save();
     ctx.beginPath();
-    ctx.rect(t.x, t.y, t.width, t.height);
+    ctx.rect(st.x, st.y, st.width, st.height);
     ctx.clip();
   }
 
   const linePx = fontSize * layout.lineHeight;
-  const contentW = t.width - t.padding * 2;
-  const innerTop = t.y + t.padding;
-  const innerBottom = t.y + (t.height > 0 ? t.height : 0) - t.padding;
+  const contentW = st.width - st.padding * 2;
+  const innerTop = st.y + st.padding;
+  const innerBottom = st.y + (st.height > 0 ? st.height : 0) - st.padding;
   const blockH = lines.length * linePx;
 
   // Posisi vertikal teks di dalam kotak (atas / tengah / bawah).
   let startY = innerTop;
-  if (t.height > 0) {
-    if (t.valign === 'center') startY = innerTop + Math.max(0, (innerBottom - innerTop - blockH) / 2);
-    else if (t.valign === 'bottom') startY = innerBottom - blockH;
+  if (st.height > 0) {
+    if (st.valign === 'center') startY = innerTop + Math.max(0, (innerBottom - innerTop - blockH) / 2);
+    else if (st.valign === 'bottom') startY = innerBottom - blockH;
   }
   const firstBaseline = startY + fontSize * 0.8;
 
   lines.forEach((line, i) => {
     const baseline = firstBaseline + i * linePx;
-    if (t.align === 'justify') {
+    if (st.align === 'justify') {
       ctx.textAlign = 'left';
-      drawJustifiedLine(ctx, line, t.x + t.padding, baseline, contentW);
+      drawJustifiedLine(ctx, line, st.x + st.padding, baseline, contentW);
     } else {
-      ctx.textAlign = t.align;
-      let x = t.x + t.padding;
-      if (t.align === 'center') x = t.x + t.width / 2;
-      else if (t.align === 'right') x = t.x + t.width - t.padding;
+      ctx.textAlign = st.align;
+      let x = st.x + st.padding;
+      if (st.align === 'center') x = st.x + st.width / 2;
+      else if (st.align === 'right') x = st.x + st.width - st.padding;
       ctx.fillText(line, x, baseline);
     }
   });
@@ -362,25 +478,36 @@ function drawTextField(
 const renderCard = async (
   canvas: HTMLCanvasElement, template: HTMLImageElement,
   participant: Participant, config: CardConfig,
-  opts?: { active?: DragTarget | null },
+  opts?: { active?: DragTarget | null; maxDim?: number },
 ) => {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  canvas.width = template.naturalWidth || 640;
-  canvas.height = template.naturalHeight || 400;
+  // Bila template besar, perkecil kanvas agar hemat memori saat render massal (PDF).
+  const natW = template.naturalWidth || 640;
+  const natH = template.naturalHeight || 400;
+  const maxDim = opts?.maxDim ?? 0;
+  let w = natW, h = natH;
+  if (maxDim > 0 && (natW > maxDim || natH > maxDim)) {
+    const k = Math.min(maxDim / natW, maxDim / natH);
+    w = Math.round(natW * k);
+    h = Math.round(natH * k);
+  }
+  const scale = w / natW;
+  canvas.width = w;
+  canvas.height = h;
 
-  ctx.drawImage(template, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(template, 0, 0, w, h);
 
   for (const t of config.textFields) {
-    drawTextField(ctx, t, fieldValue(t.field, participant));
+    drawTextField(ctx, t, fieldValue(t.field, participant), scale);
   }
 
   try {
     const qrDataUrl = await qrToDataUrlCached(qrContent(participant), config.qr.size);
     const img = new Image();
     await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = reject; img.src = qrDataUrl; });
-    ctx.drawImage(img, config.qr.x, config.qr.y, config.qr.size, config.qr.size);
+    ctx.drawImage(img, config.qr.x * scale, config.qr.y * scale, config.qr.size * scale, config.qr.size * scale);
   } catch (e) {
     console.warn('QR generation error for:', participant.id, e);
   }
@@ -440,13 +567,21 @@ export const AdminIdCard: React.FC = () => {
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const [templateImg, setTemplateImg] = useState<HTMLImageElement | null>(null);
   const [templateUrl, setTemplateUrl] = useState<string | null>(null);
-  const [config, setConfig] = useState<CardConfig>(DEFAULT_CONFIG);
+
+  // Muat konfigurasi tersimpan (layout canvas + ukuran kertas) sekali saat mount.
+  const initial = useRef<PersistedIdCardState | null>(null);
+  if (initial.current === null) initial.current = loadPersisted();
+  const [config, setConfig] = useState<CardConfig>(initial.current.config);
   const [previewParticipant, setPreviewParticipant] = useState<Participant | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>('name');
   const [toast, setToast] = useState<string | null>(null);
+
+  // State loading PDF (overlay + progress real-time)
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [pdfProgress, setPdfProgress] = useState<{ done: number; total: number } | null>(null);
 
   // Drag & selection state (langsung klik elemen di canvas)
   const [activeTarget, setActiveTarget] = useState<DragTarget | null>(null);
@@ -461,19 +596,19 @@ export const AdminIdCard: React.FC = () => {
   } | null>(null);
 
   // Paper & Card sizes (mm)
-  const [paperPreset, setPaperPreset] = useState('A4');
-  const [paperW, setPaperW] = useState(210);
-  const [paperH, setPaperH] = useState(297);
-  const [cardW, setCardW] = useState(85);
-  const [cardH, setCardH] = useState(54);
-  const [marginTop, setMarginTop] = useState(10);
-  const [marginBottom, setMarginBottom] = useState(10);
-  const [marginLeft, setMarginLeft] = useState(10);
-  const [marginRight, setMarginRight] = useState(10);
-  const [gap, setGap] = useState(5);
+  const [paperPreset, setPaperPreset] = useState(initial.current.paper.paperPreset);
+  const [paperW, setPaperW] = useState(initial.current.paper.paperW);
+  const [paperH, setPaperH] = useState(initial.current.paper.paperH);
+  const [cardW, setCardW] = useState(initial.current.paper.cardW);
+  const [cardH, setCardH] = useState(initial.current.paper.cardH);
+  const [marginTop, setMarginTop] = useState(initial.current.paper.marginTop);
+  const [marginBottom, setMarginBottom] = useState(initial.current.paper.marginBottom);
+  const [marginLeft, setMarginLeft] = useState(initial.current.paper.marginLeft);
+  const [marginRight, setMarginRight] = useState(initial.current.paper.marginRight);
+  const [gap, setGap] = useState(initial.current.paper.gap);
 
   // PDF options
-  const [cropMarks, setCropMarks] = useState(true);
+  const [cropMarks, setCropMarks] = useState(initial.current.paper.cropMarks);
 
   // Layout preview modal
   const [showLayoutPreview, setShowLayoutPreview] = useState(false);
@@ -498,6 +633,18 @@ export const AdminIdCard: React.FC = () => {
     renderCard(previewCanvasRef.current, templateImg, previewParticipant, config, { active: activeTarget });
   }, [templateImg, previewParticipant, config, activeTarget]);
 
+  // Simpan otomatis ke localStorage setiap ada perubahan konfigurasi.
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        config,
+        paper: { paperPreset, paperW, paperH, cardW, cardH, marginTop, marginBottom, marginLeft, marginRight, gap, cropMarks },
+      } satisfies PersistedIdCardState));
+    } catch (err) {
+      console.warn('Gagal menyimpan konfigurasi ID card ke localStorage:', err);
+    }
+  }, [config, paperPreset, paperW, paperH, cardW, cardH, marginTop, marginBottom, marginLeft, marginRight, gap, cropMarks]);
+
   const loadTemplate = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
       showToast('File harus berupa gambar (PNG/JPG/JPEG)');
@@ -505,7 +652,12 @@ export const AdminIdCard: React.FC = () => {
     }
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => { setTemplateImg(img); setTemplateUrl(url); };
+    img.onload = () => {
+      // Template baru => reset layout elemen ke default (posisi elemen terkait ukuran gambar lama).
+      setConfig(cloneConfig(DEFAULT_CONFIG));
+      setTemplateImg(img);
+      setTemplateUrl(url);
+    };
     img.src = url;
   }, []);
 
@@ -614,46 +766,62 @@ export const AdminIdCard: React.FC = () => {
   const downloadSingle = async (p: Participant) => {
     if (!templateImg) { showToast('Upload template terlebih dahulu!'); return; }
     const canvas = document.createElement('canvas');
-    await renderCard(canvas, templateImg, p, config);
+    await renderCard(canvas, templateImg, p, config, { maxDim: 2400 });
     canvas.toBlob(blob => { if (blob) saveAs(blob, `IDCard_${p.id}.png`); }, 'image/png');
   };
 
   // --- Generate PDF siap cetak (multi-halaman, menggantikan .ZIP) ---
   const generatePdf = async () => {
     if (!templateImg) { showToast('Upload template terlebih dahulu!'); return; }
-    if (selectedParticipants.length === 0) { showToast('Pilih minimal 1 peserta!'); return; }
+    const total = selectedParticipants.length;
+    if (total === 0) { showToast('Pilih minimal 1 peserta!'); return; }
+
+    const orientation: 'portrait' | 'landscape' = paperW >= paperH ? 'landscape' : 'portrait';
+    const totalPages = pageCountFor(total, layout.perSheet);
+    // Batasi resolusi render kartu (~300 DPI, maks 2400px) agar template besar
+    // tidak meledakkan memori saat render massal.
+    const renderMaxDim = Math.min(2400, Math.max(1024, Math.ceil(Math.max(cardW, cardH) * 300 / 25.4)));
+
     setIsGenerating(true);
+    setPdfProgress({ done: 0, total });
+    setPdfLoading(`Mengolah data peserta (0/${total})...`);
     try {
-      const totalPages = pageCountFor(selectedParticipants.length, layout.perSheet);
-      const orientation: 'portrait' | 'landscape' = paperW >= paperH ? 'landscape' : 'portrait';
       const pdf = new jsPDF({ orientation, unit: 'mm', format: [paperW, paperH] });
 
-      // Render semua kartu sekali, lalu susun ke halaman-halaman PDF.
-      const images: string[] = [];
-      for (const p of selectedParticipants) {
+      // Render & tambahkan tiap kartu langsung ke halaman PDF (streaming),
+      // sehingga hanya 1 gambar dalam memori pada satu waktu.
+      for (let i = 0; i < total; i++) {
         const canvas = document.createElement('canvas');
-        await renderCard(canvas, templateImg, p, config);
-        images.push(canvas.toDataURL('image/png'));
+        await renderCard(canvas, templateImg, selectedParticipants[i], config, { maxDim: renderMaxDim });
+        const dataUrl = canvas.toDataURL('image/png');
+        canvas.width = 0;
+        canvas.height = 0;
+
+        if (i > 0 && i % layout.perSheet === 0) pdf.addPage([paperW, paperH], orientation);
+        const pos = slotPosition(i % layout.perSheet, gridParams, layout);
+        pdf.addImage(dataUrl, 'PNG', pos.xMM, pos.yMM, cardW, cardH, undefined, 'FAST');
+        if (cropMarks) drawCropMarks(pdf, pos.xMM, pos.yMM, cardW, cardH);
+
+        setPdfProgress({ done: i + 1, total });
+        setPdfLoading(`Mengolah data peserta (${i + 1}/${total})...`);
+        // Beri jeda singkat agar React bisa me-refresh overlay progres.
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
 
-      for (let page = 0; page < totalPages; page++) {
-        if (page > 0) pdf.addPage([paperW, paperH], orientation);
-        const start = page * layout.perSheet;
-        const end = Math.min(start + layout.perSheet, images.length);
-        for (let i = start; i < end; i++) {
-          const pos = slotPosition(i - start, gridParams, layout);
-          pdf.addImage(images[i], 'PNG', pos.xMM, pos.yMM, cardW, cardH, undefined, 'FAST');
-          if (cropMarks) drawCropMarks(pdf, pos.xMM, pos.yMM, cardW, cardH);
-        }
-      }
+      setPdfLoading('Menyusun layout lembar PDF...');
+      await new Promise(resolve => setTimeout(resolve, 30));
 
-      pdf.save(`IDCards_CAI_${selectedParticipants.length}_peserta.pdf`);
-      showToast(`✅ PDF siap cetak: ${selectedParticipants.length} ID card — ${totalPages} halaman ${paperPreset}`);
+      setPdfLoading('Sedang mengunduh dokumen PDF, mohon tunggu...');
+      pdf.save(`IDCards_CAI_${total}_peserta.pdf`);
+      showToast(`✅ PDF siap cetak: ${total} ID card — ${totalPages} halaman ${paperPreset}`);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       console.error('PDF generation error:', err);
-      showToast('Gagal membuat PDF. Coba lagi.');
+      showToast(`Gagal membuat PDF: ${message}`);
     } finally {
       setIsGenerating(false);
+      setPdfProgress(null);
+      setPdfLoading(null);
     }
   };
 
@@ -897,7 +1065,7 @@ export const AdminIdCard: React.FC = () => {
             Upload template, geser teks/QR langsung di preview, lalu unduh PDF siap cetak dengan tata letak kertas otomatis.
           </p>
         </div>
-        <button onClick={() => setConfig(DEFAULT_CONFIG)}
+        <button onClick={() => { setConfig(cloneConfig(DEFAULT_CONFIG)); setActiveTarget(null); }}
           className="px-4 py-2.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 flex items-center gap-1.5 active:scale-95 shadow-sm cursor-pointer">
           <RefreshCw className="h-3.5 w-3.5" /> Reset Konfigurasi
         </button>
@@ -1252,6 +1420,40 @@ export const AdminIdCard: React.FC = () => {
         participants={selectedParticipants}
         templateUrl={templateUrl}
       />
+
+      {/* Loading Overlay: proses generate PDF berjalan */}
+      <AnimatePresence>
+        {pdfLoading && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 12 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm px-6 py-8 flex flex-col items-center gap-5">
+              <div className="h-14 w-14 rounded-full bg-blue-50 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+              </div>
+              <div className="text-center space-y-1.5">
+                <p className="text-sm font-bold text-slate-800">Membuat PDF ID Card</p>
+                <p className="text-xs text-slate-500">{pdfLoading}</p>
+              </div>
+              {pdfProgress && (
+                <div className="w-full space-y-1.5">
+                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-blue-600 rounded-full"
+                      animate={{ width: `${Math.min(100, Math.round((pdfProgress.done / pdfProgress.total) * 100))}%` }}
+                      transition={{ duration: 0.2 }}
+                    />
+                  </div>
+                  <p className="text-[10px] font-mono text-slate-400 text-right">
+                    {Math.round((pdfProgress.done / pdfProgress.total) * 100)}%
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
