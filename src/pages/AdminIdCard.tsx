@@ -118,7 +118,8 @@ function qrContent(p: Participant): string {
 }
 
 function qrToDataUrl(text: string, size: number): Promise<string> {
-  return QRCode.toDataURL(text, { width: size, margin: 1, color: { dark: '#1e293b', light: 'transparent' } });
+  // light '#00000000' = transparan penuh (qrcode tidak menerima kata "transparent").
+  return QRCode.toDataURL(text, { width: size, margin: 1, color: { dark: '#1e293b', light: '#00000000' } });
 }
 
 // Cache hasil QR per konten agar drag & render berulang tetap cepat.
