@@ -32,7 +32,7 @@ export const OperatorCheckIn: React.FC = () => {
   const { participants, checkInParticipant, currentUser, checkInLogs, sessions, fetchSessions, activeSessionId, setActiveSessionId, refreshBackendData } = useApp();
   const [activeTab, setActiveTab] = useState<'qr' | 'rfid'>('rfid');
   const [searchQuery, setSearchQuery] = useState('');
-  const [idInput, setIdInput] = useState('');
+  const [manualName, setManualName] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showSessionDropdown, setShowSessionDropdown] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -280,7 +280,7 @@ export const OperatorCheckIn: React.FC = () => {
         participant: res.participant
       });
       setSearchQuery('');
-      setIdInput('');
+      setManualName('');
       setShowDropdown(false);
     } else {
       setFlashMessage({
@@ -296,10 +296,20 @@ export const OperatorCheckIn: React.FC = () => {
     }, 4000);
   };
 
-  const handleIdSubmit = (e: React.FormEvent) => {
+  const handleManualNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!idInput.trim()) return;
-    handleManualCheckIn(idInput.trim());
+    const name = manualName.trim();
+    if (!name) return;
+    const matches = participants.filter(p => (p.name || '').trim().toLowerCase() === name.toLowerCase());
+    if (matches.length === 0) {
+      setFlashMessage({ type: 'error', text: `Nama "${name}" tidak ditemukan. Periksa ejaan atau gunakan pencarian di bawah.` });
+      return;
+    }
+    if (matches.length > 1) {
+      setFlashMessage({ type: 'warn', text: `Ada ${matches.length} peserta bernama "${name}". Pilih dari hasil pencarian di bawah.` });
+      return;
+    }
+    handleManualCheckIn(matches[0].id);
   };
 
   // Simulate scanning a random QR code from remaining unchecked participants
@@ -698,14 +708,14 @@ export const OperatorCheckIn: React.FC = () => {
 
             <div className="space-y-4">
               {/* Form Input ID */}
-              <form onSubmit={handleIdSubmit} className="flex gap-2.5">
+              <form onSubmit={handleManualNameSubmit} className="flex gap-2.5">
                 <div className="relative flex-1">
                   <input
                     type="text"
-                    placeholder="Ketik ID Peserta (Contoh: CAI-2026-003)"
-                    value={idInput}
-                    onChange={(e) => setIdInput(e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase font-mono"
+                    placeholder="Ketik Nama Peserta (mis. Ahmad Fauzi)"
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <button
@@ -713,7 +723,7 @@ export const OperatorCheckIn: React.FC = () => {
                   className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm active:scale-95 whitespace-nowrap"
                   id="submit-id-btn"
                 >
-                  Absen ID
+                  Absen
                 </button>
               </form>
 
