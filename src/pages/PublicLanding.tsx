@@ -10,6 +10,7 @@ import { ChevronDown, FileText, LogIn, AlertTriangle, Edit3, PlusCircle, User, C
 const GROUPS = Array.from({ length: 15 }, (_, i) => i + 1);
 const LS_GROUP_KEY = 'lastSubmittedGroup';
 const LS_SESSION_KEY = 'lastSubmittedSession';
+const LS_LAST_SESSION_KEY = 'lastSelectedSession';
 
 interface StatusCache {
   [key: string]: { isFilled: boolean; updatedAt: string | null };
@@ -29,7 +30,7 @@ function RecapCard({ label, content }: { label: string; content: string }) {
 export const PublicLanding: React.FC = () => {
   const { setCurrentPage } = useApp();
   const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
-  const [selectedSession, setSelectedSession] = useState('Sesi 1');
+  const [selectedSession, setSelectedSession] = useState(() => localStorage.getItem(LS_LAST_SESSION_KEY) || 'Sesi 1');
   const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [data, setData] = useState<FgdMinute | null>(null);
   const [loading, setLoading] = useState(false);
@@ -110,7 +111,6 @@ export const PublicLanding: React.FC = () => {
 
   const handleGroupChange = (gn: number | null) => {
     setSelectedGroup(gn);
-    setSelectedSession('Sesi 1');
     setData(null);
     setPendingSession(null);
     setViewMode('form');
@@ -128,6 +128,7 @@ export const PublicLanding: React.FC = () => {
     } else {
       setPendingSession(null);
       setSelectedSession(session);
+      localStorage.setItem(LS_LAST_SESSION_KEY, session);
       loadSession(selectedGroup, session);
     }
   };
@@ -135,6 +136,7 @@ export const PublicLanding: React.FC = () => {
   const handleEditExisting = () => {
     if (selectedGroup === null || !pendingSession) return;
     setSelectedSession(pendingSession);
+    localStorage.setItem(LS_LAST_SESSION_KEY, pendingSession);
     loadSession(selectedGroup, pendingSession);
     setPendingSession(null);
   };
@@ -148,6 +150,7 @@ export const PublicLanding: React.FC = () => {
     });
     if (empty) {
       setSelectedSession(empty);
+      localStorage.setItem(LS_LAST_SESSION_KEY, empty);
       loadSession(selectedGroup, empty);
     }
     setPendingSession(null);
@@ -191,7 +194,6 @@ export const PublicLanding: React.FC = () => {
     localStorage.removeItem(LS_GROUP_KEY);
     localStorage.removeItem(LS_SESSION_KEY);
     setSelectedGroup(null);
-    setSelectedSession('Sesi 1');
     setData(null);
     setViewMode('form');
   };
