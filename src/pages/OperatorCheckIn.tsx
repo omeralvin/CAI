@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Participant, AttendanceSession } from '../types';
 import { API_BASE_URL } from '../api';
@@ -33,6 +33,7 @@ export const OperatorCheckIn: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'qr' | 'rfid'>('rfid');
   const [searchQuery, setSearchQuery] = useState('');
   const [manualName, setManualName] = useState('');
+  const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showSessionDropdown, setShowSessionDropdown] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -297,20 +298,31 @@ export const OperatorCheckIn: React.FC = () => {
   };
 
   const handleManualNameSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
     const name = manualName.trim();
     if (!name) return;
     const matches = participants.filter(p => (p.name || '').trim().toLowerCase() === name.toLowerCase());
     if (matches.length === 0) {
-      setFlashMessage({ type: 'error', text: `Nama "${name}" tidak ditemukan. Periksa ejaan atau gunakan pencarian di bawah.` });
+      setFlashMessage({ type: 'error', text: `Nama "${name}" tidak ditemukan. Ketik sebagian nama untuk melihat rekomendasi.` });
       return;
     }
     if (matches.length > 1) {
-      setFlashMessage({ type: 'warn', text: `Ada ${matches.length} peserta bernama "${name}". Pilih dari hasil pencarian di bawah.` });
+      setFlashMessage({ type: 'warn', text: `Ada ${matches.length} peserta bernama "${name}". Pilih salah satu dari rekomendasi di bawah.` });
       return;
     }
     handleManualCheckIn(matches[0].id);
   };
+
+  // Rekomendasi nama yang mirip (urut: nama yang diawali query, lalu belum absen, lalu lainnya).
+  const nameSuggestions = useMemo(() => {
+    const q = manualName.trim().toLowerCase();
+    if (!q) return [];
+    return participants
+      .filter(p => (p.name || '').toLowerCase().includes(q))
+      .map(p => ({ p, score: (p.name || '').toLowerCase().startsWith(q) ? 0 : 1 }))
+      .sort((a, b) => a.score - b.score || (a.p.isCheckedIn === b.p.isCheckedIn ? 0 : a.p.isCheckedIn ? 1 : -1))
+      .slice(0, 8)
+      .map(x => x.p);
+  }, [manualName, participants]);
 
   // Simulate scanning a random QR code from remaining unchecked participants
   const handleSimulateScan = () => {
@@ -714,9 +726,44 @@ export const OperatorCheckIn: React.FC = () => {
                     type="text"
                     placeholder="Ketik Nama Peserta (mis. Ahmad Fauzi)"
                     value={manualName}
-                    onChange={(e) => setManualName(e.target.value)}
+                    onChange={(e) => { setManualName(e.target.value); setShowNameSuggestions(true); }}
+                    onFocus={() => setShowNameSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowNameSuggestions(false), 150)}
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  <AnimatePresence>
+                    {showNameSuggestions && nameSuggestions.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 5 }}
+                        className="absolute z-30 left-0 right-0 mt-1.5 bg-white border border-slate-200/80 rounded-xl shadow-lg max-h-64 overflow-y-auto divide-y divide-slate-100"
+                      >
+                        {nameSuggestions.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onMouseDown={() => handleManualCheckIn(p.id)}
+                            className="w-full px-4 py-2.5 text-left hover:bg-slate-50 transition-colors flex items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-1.5">
+                                {p.name}
+                                {p.isCheckedIn && (
+                                  <span className="shrink-0 text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full">sudah absen</span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1.5 mt-0.5">
+                                <span className="font-mono bg-slate-100 px-1 py-0.5 rounded">{p.id}</span>
+                                <span>•</span><span>{p.group}</span><span>•</span><span>{p.origin}</span>
+                              </div>
+                            </div>
+                            <UserCheck className={`h-4 w-4 shrink-0 ${p.isCheckedIn ? 'text-slate-300' : 'text-blue-600'}`} />
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
                 <button
                   type="submit"
