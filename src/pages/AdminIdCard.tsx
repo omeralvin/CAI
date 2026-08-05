@@ -138,6 +138,18 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 // --- Persistence (localStorage) ---
 
 const STORAGE_KEY = 'idcard.custom.v1';
+// Data URL template gambar tersimpan terpisah dari config agar muat & cepat.
+const TEMPLATE_STORAGE_KEY = 'idcard.custom.v1.template';
+
+/** Bangun gambar dari data URL. */
+function loadImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
 
 interface PersistedPaperState {
   paperPreset: string;
@@ -688,15 +700,33 @@ export const AdminIdCard: React.FC = () => {
       showToast('File harus berupa gambar (PNG/JPG/JPEG)');
       return;
     }
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      // Template baru => reset layout elemen ke default (posisi elemen terkait ukuran gambar lama).
-      setConfig(cloneConfig(DEFAULT_CONFIG));
-      setTemplateImg(img);
-      setTemplateUrl(url);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const img = new Image();
+      img.onload = () => {
+        // Simpan template (data URL) agar otomatis muncul lagi saat buka halaman berikutnya.
+        try { localStorage.setItem(TEMPLATE_STORAGE_KEY, dataUrl); }
+        catch (err) { console.warn('Gagal menyimpan template ke localStorage (mungkin terlalu besar):', err); }
+        // Pertahankan pengaturan/layout yang sudah diatur — tidak di-reset lagi.
+        setTemplateImg(img);
+        setTemplateUrl(dataUrl);
+      };
+      img.src = dataUrl;
     };
-    img.src = url;
+    reader.readAsDataURL(file);
+  }, []);
+
+  // Pulihkan template tersimpan begitu halaman dibuka, tanpa menyentuh layout.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(TEMPLATE_STORAGE_KEY);
+      if (stored) {
+        loadImageFromDataUrl(stored)
+          .then(img => { setTemplateImg(img); setTemplateUrl(stored); })
+          .catch(() => { localStorage.removeItem(TEMPLATE_STORAGE_KEY); });
+      }
+    } catch (err) { console.warn('Gagal memuat template tersimpan:', err); }
   }, []);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
