@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { FgdMinute } from '../types';
+import { FgdMinute, FgdTheme } from '../types';
 import { FgdForm } from '../components/FgdForm';
 import { useApp } from '../context/AppContext';
 import { API_BASE_URL } from '../api';
+import { fetchFgdThemes, fgdThemeLabel, fgdThemeLabelFor, getHeaders } from '../utils/fgdThemes';
 import logoWarna from '../../assets/image/logo_warna.png';
 import {
   Table2, FileEdit, Download, Trash2, Eye,
-  ChevronDown, FileText, CheckCircle, XCircle, AlertTriangle, Monitor
+  ChevronDown, FileText, CheckCircle, XCircle, AlertTriangle, Monitor, Plus, Settings2
 } from 'lucide-react';
 const GROUPS = Array.from({ length: 15 }, (_, i) => i + 1);
-const SESSION_OPTIONS = ['Semua Sesi', 'Sesi 1', 'Sesi 2', 'Sesi 3', 'Sesi 4', 'Sesi 5'];
 
 const emptyForm: Omit<FgdMinute, 'id' | 'createdAt' | 'updatedAt' | 'groupNumber'> = {
   sessionName: 'Sesi 1',
@@ -33,13 +33,146 @@ const emptyForm: Omit<FgdMinute, 'id' | 'createdAt' | 'updatedAt' | 'groupNumber
 
 type TabId = 'rekap' | 'input';
 
-function getHeaders() {
-  const token = localStorage.getItem('cai_token');
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': token ? `Bearer ${token}` : '',
+const FgdThemeManager: React.FC<{
+  themes: FgdTheme[];
+  onClose: () => void;
+  onChanged: () => void;
+}> = ({ themes, onClose, onChanged }) => {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [newName, setNewName] = useState('');
+  const [newTheme, setNewTheme] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editTheme, setEditTheme] = useState('');
+
+  const flash = (type: 'success' | 'error', text: string) => {
+    setMsg({ type, text });
+    setTimeout(() => setMsg(null), 3500);
   };
-}
+
+  const run = async (fn: () => Promise<boolean>, okMsg: string) => {
+    setBusy(true);
+    const ok = await fn();
+    setBusy(false);
+    if (ok) { flash('success', okMsg); onChanged(); }
+    else flash('error', 'Gagal menyimpan. Periksa isian (nama sesi wajib & unik).');
+  };
+
+  const handleAdd = () => {
+    if (!newName.trim()) { flash('error', 'Nama sesi wajib diisi!'); return; }
+    run(async () => {
+      const res = await fetch(`${API_BASE_URL}/notulis/themes`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ name: newName.trim(), theme: newTheme.trim() }),
+      });
+      if (res.ok) { setNewName(''); setNewTheme(''); return true; }
+      return false;
+    }, 'Tema sesi berhasil ditambahkan');
+  };
+
+  const handleSaveEdit = () => {
+    if (!editId || !editName.trim()) { flash('error', 'Nama sesi wajib diisi!'); return; }
+    run(async () => {
+      const res = await fetch(`${API_BASE_URL}/notulis/themes/${editId}`, {
+        method: 'PUT', headers: getHeaders(),
+        body: JSON.stringify({ name: editName.trim(), theme: editTheme }),
+      });
+      if (res.ok) { setEditId(null); return true; }
+      return false;
+    }, 'Perubahan tersimpan');
+  };
+
+  const handleDelete = (id: string, name: string) => {
+    if (!confirm(`Hapus sesi "${name}"? Data notulis yang memakai sesi ini tetap tersimpan.`)) return;
+    run(async () => {
+      const res = await fetch(`${API_BASE_URL}/notulis/themes/${id}`, { method: 'DELETE', headers: getHeaders() });
+      return res.ok;
+    }, 'Sesi berhasil dihapus');
+  };
+
+  const startEdit = (t: FgdTheme) => {
+    setEditId(t.id); setEditName(t.name); setEditTheme(t.theme);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+              <Settings2 className="h-5 w-5 text-blue-600" /> Kelola Tema Sesi FGD
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">Sesi ditampilkan sebagai "Sesi X : tema" di semua form & laporan.</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors" title="Tutup">✕</button>
+        </div>
+
+        {msg && (
+          <div className={`mb-3 px-3 py-2 rounded-lg text-xs font-semibold ${msg.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+            {msg.text}
+          </div>
+        )}
+
+        {/* Daftar sesi */}
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1 mb-4">
+          {themes.length === 0 && (
+            <div className="text-center py-8 text-slate-400 text-sm">Belum ada sesi. Tambahkan di bawah.</div>
+          )}
+          {themes.map(t => (
+            <div key={t.id} className="border border-slate-200 rounded-xl p-3 flex items-start gap-3 bg-slate-50/50">
+              <span className="text-[10px] font-mono text-slate-400 mt-1 w-5 text-right">{t.order}</span>
+              {editId === t.id ? (
+                <div className="flex-1 space-y-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input value={editName} onChange={e => setEditName(e.target.value)}
+                      className="flex-1 px-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-blue-500" placeholder="Nama sesi (mis. Sesi 1)" />
+                    <input value={editTheme} onChange={e => setEditTheme(e.target.value)}
+                      className="flex-[2] px-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-blue-500" placeholder="Tema / materi sesi" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={handleSaveEdit} disabled={busy}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition-colors disabled:opacity-50">Simpan</button>
+                    <button onClick={() => setEditId(null)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] font-bold rounded-lg transition-colors">Batal</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-slate-800">{t.name}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{t.theme.trim() || <span className="italic text-slate-300">Belum ada tema</span>}</div>
+                </div>
+              )}
+              {editId !== t.id && (
+                <div className="flex items-center gap-1">
+                  <button onClick={() => startEdit(t)} className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors" title="Edit">✏️</button>
+                  <button onClick={() => handleDelete(t.id, t.name)} className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 transition-colors" title="Hapus">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Tambah baru */}
+        <div className="border-t border-slate-200 pt-4">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input value={newName} onChange={e => setNewName(e.target.value)}
+              className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-blue-500" placeholder="Nama sesi (mis. Sesi 6)" />
+            <input value={newTheme} onChange={e => setNewTheme(e.target.value)}
+              className="flex-[2] px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-blue-500" placeholder="Tema / materi sesi (mis. Peran Keluarga)" />
+            <button onClick={handleAdd} disabled={busy}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+              <Plus className="h-3.5 w-3.5" /> Tambah Sesi
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-2">Sesi yang dihapus tidak akan muncul lagi di form publik & admin, namun data notulis lama tetap aman.</p>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const AdminFgd: React.FC = () => {
   const { setCurrentPage } = useApp();
@@ -51,6 +184,15 @@ export const AdminFgd: React.FC = () => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [sessionFilter, setSessionFilter] = useState('Semua Sesi');
+  const [themes, setThemes] = useState<FgdTheme[]>([]);
+  const [showThemeModal, setShowThemeModal] = useState(false);
+
+  const loadThemes = async () => {
+    const data = await fetchFgdThemes();
+    setThemes(data);
+  };
+
+  useEffect(() => { loadThemes(); }, []);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -169,6 +311,9 @@ export const AdminFgd: React.FC = () => {
           <p className="text-sm text-slate-500">Kelola data Focus Group Discussion</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setShowThemeModal(true)} className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer">
+            <Settings2 className="h-4 w-4" /> Kelola Tema Sesi
+          </button>
           <button onClick={() => setCurrentPage('admin-fgd-present')} className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-1.5">
             <Monitor className="h-4 w-4" /> Presentasi Layar Lebar
           </button>
@@ -217,15 +362,16 @@ export const AdminFgd: React.FC = () => {
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <label className="text-xs font-semibold text-slate-600">Filter Sesi:</label>
-            <select
-              value={sessionFilter}
-              onChange={e => setSessionFilter(e.target.value)}
-              className="px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 outline-none"
-            >
-              {SESSION_OPTIONS.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+              <select
+                value={sessionFilter}
+                onChange={e => setSessionFilter(e.target.value)}
+                className="px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 outline-none"
+              >
+                <option value="Semua Sesi">Semua Sesi</option>
+                {themes.map(t => (
+                  <option key={t.id} value={t.name}>{fgdThemeLabel(t)}</option>
+                ))}
+              </select>
           </div>
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -262,7 +408,7 @@ export const AdminFgd: React.FC = () => {
                     return rows.map(d => (
                       <tr key={`${g}-${d.sessionName}`} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
                         <td className="px-4 py-3 font-bold text-slate-700">Grup {g}</td>
-                        <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{d.sessionName}</td>
+                        <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{fgdThemeLabelFor(themes, d.sessionName)}</td>
                         <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{d.authorName || '-'}</td>
                         <td className="px-3 py-3 text-slate-600 max-w-[180px] truncate">{d.usulanPermasalahan || '-'}</td>
                         <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d.problem || '-'}</td>
@@ -339,8 +485,8 @@ export const AdminFgd: React.FC = () => {
                   className="w-full appearance-none px-4 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                   disabled={selectedGroup === null}
                 >
-                  {SESSION_OPTIONS.filter(s => s !== 'Semua Sesi').map(s => (
-                    <option key={s} value={s}>{s}</option>
+                  {themes.map(t => (
+                    <option key={t.id} value={t.name}>{fgdThemeLabel(t)}</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
@@ -352,6 +498,7 @@ export const AdminFgd: React.FC = () => {
               key={`${selectedGroup}-${editData?.sessionName ?? 'Sesi 1'}`}
               groupNumber={selectedGroup}
               initialData={editData}
+              sessionLabel={fgdThemeLabelFor(themes, editData?.sessionName ?? 'Sesi 1')}
               onSubmit={handleSubmitForm}
             />
           ) : (
@@ -364,6 +511,15 @@ export const AdminFgd: React.FC = () => {
       )}
 
 
+
+      {/* Kelola Tema Sesi FGD Modal */}
+      {showThemeModal && (
+        <FgdThemeManager
+          themes={themes}
+          onClose={() => setShowThemeModal(false)}
+          onChanged={loadThemes}
+        />
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (

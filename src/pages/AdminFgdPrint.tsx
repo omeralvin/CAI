@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { FgdMinute } from '../types';
+import { FgdMinute, FgdTheme } from '../types';
 import { useApp } from '../context/AppContext';
 import { API_BASE_URL } from '../api';
+import { fetchFgdThemes, fgdThemeLabelFor } from '../utils/fgdThemes';
 import logoWarna from '../../assets/image/logo_warna.png';
 
 function getHeaders() {
@@ -15,8 +16,11 @@ function getHeaders() {
 export const AdminFgdPrint: React.FC = () => {
   const { setCurrentPage } = useApp();
   const [allData, setAllData] = useState<FgdMinute[]>([]);
+  const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [loading, setLoading] = useState(true);
   const groupFilter = sessionStorage.getItem('fgd_print_group');
+
+  useEffect(() => { fetchFgdThemes().then(setThemes); }, []);
 
   useEffect(() => {
     (async () => {
@@ -84,7 +88,7 @@ export const AdminFgdPrint: React.FC = () => {
                   HASIL FOCUS GROUP DISCUSSION (FGD)
                 </h1>
                 <p className="text-xs text-slate-500 font-medium">
-                  Grup {d.groupNumber} — {d.sessionName}
+                  Grup {d.groupNumber} — {fgdThemeLabelFor(themes, d.sessionName)}
                   {d.authorName && <span className="ml-2 text-slate-400">| Notulis: {d.authorName}</span>}
                 </p>
               </div>

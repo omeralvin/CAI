@@ -2,8 +2,6 @@ import React, { useState, useRef, useCallback } from 'react';
 import { FgdMinute } from '../types';
 import { Bold, List, ListOrdered } from 'lucide-react';
 
-const SESSION_OPTIONS = ['Sesi 1', 'Sesi 2', 'Sesi 3', 'Sesi 4', 'Sesi 5'];
-
 type FgdFormData = Omit<FgdMinute, 'id' | 'createdAt' | 'updatedAt' | 'groupNumber'>;
 
 const REQUIRED_FIELDS: (keyof FgdFormData)[] = [
@@ -35,6 +33,10 @@ const FIELD_LABELS: Record<string, string> = {
 interface FgdFormProps {
   groupNumber: number;
   initialData: FgdMinute | null;
+  /** Label sesi tampilan, mis. "Sesi 1: tema" (hanya ditampilkan, tidak bisa diubah di sini). */
+  sessionLabel?: string;
+  /** Nama sesi default saat initialData null (mis. "Sesi 3"). */
+  sessionName?: string;
   onSubmit: (data: FgdFormData) => Promise<void>;
   disabled?: boolean;
 }
@@ -166,13 +168,13 @@ function FieldGroup({ label, value, onChange, disabled, rows = 3, placeholder, e
   );
 }
 
-export const FgdForm: React.FC<FgdFormProps> = ({ groupNumber, initialData, onSubmit, disabled }) => {
+export const FgdForm: React.FC<FgdFormProps> = ({ groupNumber, initialData, sessionLabel, sessionName, onSubmit, disabled }) => {
   const [form, setForm] = useState<FgdFormData>(() => {
     if (initialData) {
       const { id, createdAt, updatedAt, groupNumber: _, ...rest } = initialData;
       return rest;
     }
-    return { ...emptyForm };
+    return { ...emptyForm, sessionName: sessionName || emptyForm.sessionName };
   });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -183,10 +185,10 @@ export const FgdForm: React.FC<FgdFormProps> = ({ groupNumber, initialData, onSu
       setForm(rest);
       setErrors({});
     } else {
-      setForm({ ...emptyForm });
+      setForm({ ...emptyForm, sessionName: sessionName || emptyForm.sessionName });
       setErrors({});
     }
-  }, [initialData, groupNumber]);
+  }, [initialData, groupNumber, sessionName]);
 
   const update = useCallback((key: keyof FgdFormData, value: string) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -228,22 +230,16 @@ export const FgdForm: React.FC<FgdFormProps> = ({ groupNumber, initialData, onSu
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Session & Author Info */}
+      {/* Session (read-only) & Author Info */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-            Pilih Sesi FGD <span className="text-rose-500">*</span>
+            Sesi FGD
           </label>
-          <select
-            value={form.sessionName}
-            onChange={e => update('sessionName', e.target.value)}
-            disabled={disabled}
-            className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all disabled:bg-slate-50 disabled:text-slate-500"
-          >
-            {SESSION_OPTIONS.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+          <div className="px-3 py-2.5 text-sm font-bold text-slate-700 bg-white border border-slate-200 rounded-xl">
+            {sessionLabel || form.sessionName}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">Sesi dipilih di bagian atas — pilih grup & sesi dulu.</p>
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1.5">

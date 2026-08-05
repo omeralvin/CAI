@@ -56,6 +56,13 @@ export interface DashboardData {
   groupStats: { group: string; total: number; present: number; absent: number; late: number; percent: number }[];
 }
 
+export interface FgdTheme {
+  id: string;
+  name: string; // "Sesi 1", "Sesi 2", ...
+  theme: string; // tema / materi sesi
+  order: number;
+}
+
 export interface FgdMinute {
   id: string;
   groupNumber: number;

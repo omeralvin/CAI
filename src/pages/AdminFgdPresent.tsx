@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FgdMinute } from '../types';
+import { FgdMinute, FgdTheme } from '../types';
 import { useApp } from '../context/AppContext';
 import { API_BASE_URL } from '../api';
+import { fetchFgdThemes, fgdThemeLabelFor } from '../utils/fgdThemes';
 import logoWarna from '../../assets/image/logo_warna.png';
 import { ChevronLeft, ChevronRight, X, Monitor, MonitorDown } from 'lucide-react';
 const GROUPS = Array.from({ length: 15 }, (_, i) => i + 1);
-const SESSION_OPTIONS = ['Sesi 1', 'Sesi 2', 'Sesi 3', 'Sesi 4', 'Sesi 5'];
 
 function getHeaders() {
   const token = localStorage.getItem('cai_token');
@@ -18,6 +18,7 @@ function getHeaders() {
 export const AdminFgdPresent: React.FC = () => {
   const { setCurrentPage } = useApp();
   const [allData, setAllData] = useState<FgdMinute[]>([]);
+  const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showNav, setShowNav] = useState(true);
@@ -39,6 +40,7 @@ export const AdminFgdPresent: React.FC = () => {
   };
 
   useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchFgdThemes().then(setThemes); }, []);
 
   const slides = allData.sort((a, b) =>
     a.groupNumber - b.groupNumber || a.sessionName.localeCompare(b.sessionName)
@@ -144,7 +146,7 @@ export const AdminFgdPresent: React.FC = () => {
             HASIL FOCUS GROUP DISCUSSION (FGD)
           </h1>
           <p className="text-[11px] sm:text-xs text-slate-500 font-medium">
-            Grup {current.groupNumber} — {current.sessionName}
+            Grup {current.groupNumber} — {fgdThemeLabelFor(themes, current.sessionName)}
             {current.authorName && <span className="ml-2 text-slate-400">| Notulis: {current.authorName}</span>}
           </p>
         </div>
@@ -242,7 +244,7 @@ export const AdminFgdPresent: React.FC = () => {
             >
               {slides.map((s, i) => (
                 <option key={`${s.groupNumber}-${s.sessionName}`} value={i} className="text-slate-900 bg-white">
-                  Grup {s.groupNumber} — {s.sessionName}
+                  Grup {s.groupNumber} — {fgdThemeLabelFor(themes, s.sessionName)}
                 </option>
               ))}
             </select>

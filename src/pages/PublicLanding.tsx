@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FgdMinute } from '../types';
+import { FgdMinute, FgdTheme } from '../types';
 import { FgdForm } from '../components/FgdForm';
 import { useApp } from '../context/AppContext';
+import { fetchFgdThemes, fgdThemeLabel, fgdThemeLabelFor } from '../utils/fgdThemes';
 import logoWarna from '../../assets/image/logo_warna.png';
 import { API_BASE_URL } from '../api';
 import { ChevronDown, FileText, LogIn, AlertTriangle, Edit3, PlusCircle, User, Calendar } from 'lucide-react';
 
 const GROUPS = Array.from({ length: 15 }, (_, i) => i + 1);
-const SESSION_OPTIONS = ['Sesi 1', 'Sesi 2', 'Sesi 3', 'Sesi 4', 'Sesi 5'];
 const LS_GROUP_KEY = 'lastSubmittedGroup';
 const LS_SESSION_KEY = 'lastSubmittedSession';
 
@@ -30,6 +30,7 @@ export const PublicLanding: React.FC = () => {
   const { setCurrentPage } = useApp();
   const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
   const [selectedSession, setSelectedSession] = useState('Sesi 1');
+  const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [data, setData] = useState<FgdMinute | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -38,6 +39,10 @@ export const PublicLanding: React.FC = () => {
   const [statusCache, setStatusCache] = useState<StatusCache>({});
   const [pendingSession, setPendingSession] = useState<string | null>(null);
   const prevGroupRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    fetchFgdThemes().then(setThemes);
+  }, []);
 
   useEffect(() => {
     const lastGroup = localStorage.getItem(LS_GROUP_KEY);
@@ -136,7 +141,8 @@ export const PublicLanding: React.FC = () => {
 
   const handleChooseOtherSession = () => {
     if (selectedGroup === null || !pendingSession) return;
-    const empty = SESSION_OPTIONS.find(s => {
+    const sessionNames = themes.map(t => t.name);
+    const empty = sessionNames.find(s => {
       const key = `${selectedGroup}-${s}`;
       return !statusCache[key]?.isFilled;
     });
@@ -230,13 +236,14 @@ export const PublicLanding: React.FC = () => {
             </div>
             <div className="relative flex-1">
               <select
-                value={selectedSession}
+                value={themes.some(t => t.name === selectedSession) ? selectedSession : (themes[0]?.name || '')}
                 onChange={e => handleSessionChange(e.target.value)}
                 className="w-full appearance-none px-4 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                disabled={selectedGroup === null}
+                disabled={selectedGroup === null || themes.length === 0}
               >
-                {SESSION_OPTIONS.map(s => (
-                  <option key={s} value={s}>{s}</option>
+                {themes.length === 0 && <option value="">Memuat sesi...</option>}
+                {themes.map(t => (
+                  <option key={t.id} value={t.name}>{fgdThemeLabel(t)}</option>
                 ))}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
@@ -261,7 +268,7 @@ export const PublicLanding: React.FC = () => {
               <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 rounded-xl px-4 py-3 border border-slate-200">
                 <span className="font-semibold text-slate-800">Grup {data.groupNumber}</span>
                 <span className="text-slate-300">|</span>
-                <span>{data.sessionName}</span>
+                <span>{fgdThemeLabelFor(themes, data.sessionName)}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 rounded-xl px-4 py-3 border border-slate-200">
                 <User className="h-4 w-4 text-slate-400" />
@@ -354,6 +361,8 @@ export const PublicLanding: React.FC = () => {
               <FgdForm
                 groupNumber={selectedGroup}
                 initialData={data}
+                sessionName={selectedSession}
+                sessionLabel={fgdThemeLabelFor(themes, selectedSession)}
                 onSubmit={handleSubmit}
               />
             )}
