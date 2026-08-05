@@ -241,7 +241,7 @@ export const PublicLanding: React.FC = () => {
                 className="w-full appearance-none px-4 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                 disabled={selectedGroup === null || themes.length === 0}
               >
-                {themes.length === 0 && <option value="">Memuat sesi...</option>}
+                {themes.length === 0 && <option value="">Tema belum dibuat</option>}
                 {themes.map(t => (
                   <option key={t.id} value={t.name}>{fgdThemeLabel(t)}</option>
                 ))}
@@ -249,6 +249,12 @@ export const PublicLanding: React.FC = () => {
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
             </div>
           </div>
+          {themes.length === 0 && (
+            <div className="mt-3 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span><b>Tema sesi FGD belum dibuat oleh admin.</b> Silakan coba lagi nanti atau hubungi panitia.</span>
+            </div>
+          )}
         </div>
 
         {/* Recap View */}

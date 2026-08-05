@@ -372,6 +372,11 @@ export const AdminFgd: React.FC = () => {
                   <option key={t.id} value={t.name}>{fgdThemeLabel(t)}</option>
                 ))}
               </select>
+            {themes.length === 0 && (
+              <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg font-semibold">
+                Tema sesi FGD belum dibuat
+              </span>
+            )}
           </div>
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -479,7 +484,7 @@ export const AdminFgd: React.FC = () => {
                     const session = e.target.value;
                     if (selectedGroup !== null) {
                       const existing = allData.find(d => d.groupNumber === selectedGroup && d.sessionName === session);
-                      setEditData(existing || { ...emptyForm, sessionName: session });
+                      setEditData((existing || { ...emptyForm, sessionName: session }) as FgdMinute);
                     }
                   }}
                   className="w-full appearance-none px-4 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
@@ -492,6 +497,12 @@ export const AdminFgd: React.FC = () => {
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
               </div>
             </div>
+            {themes.length === 0 && (
+              <div className="mt-3 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span><b>Tema sesi FGD belum dibuat.</b> Klik tombol <b>"Kelola Tema Sesi"</b> di pojok kanan atas untuk menambahkan sesi beserta temanya terlebih dahulu.</span>
+              </div>
+            )}
           </div>
           {selectedGroup !== null ? (
             <FgdForm
