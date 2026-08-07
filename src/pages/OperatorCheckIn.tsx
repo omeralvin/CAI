@@ -97,6 +97,43 @@ export const OperatorCheckIn: React.FC = () => {
   const autoDetectRef = useRef(autoDetectActiveSession);
   autoDetectRef.current = autoDetectActiveSession;
 
+  const checkInLogsRef = useRef(checkInLogs);
+  checkInLogsRef.current = checkInLogs;
+
+  // ── Correct per-session check-in state (instead of the global isCheckedIn flag) ──
+  const activeCheckedIds = useMemo(() => {
+    if (!activeSessionId) return null;
+    const set = new Set<string>();
+    for (const l of checkInLogs) {
+      if (l.sessionId === activeSessionId && (l.status === 'PRESENT' || l.status === 'LATE')) {
+        set.add(l.participantId);
+      }
+    }
+    return set;
+  }, [checkInLogs, activeSessionId]);
+
+  const isParticipantChecked = useCallback(
+    (p: Participant): boolean => {
+      if (activeSessionId) return activeCheckedIds?.has(p.id) ?? false;
+      return p.isCheckedIn;
+    },
+    [activeSessionId, activeCheckedIds]
+  );
+
+  // ── Keep session selector in sync with current time (re-evaluate periodically) ──
+  useEffect(() => {
+    if (userManuallySelected.current) return;
+    const syncSessionByTime = () => {
+      if (sessionsRef.current.length > 0 && !userManuallySelected.current) {
+        const detected = autoDetectRef.current(sessionsRef.current);
+        setActiveSessionId(detected);
+      }
+    };
+    syncSessionByTime();
+    const interval = setInterval(syncSessionByTime, 30000);
+    return () => clearInterval(interval);
+  }, [setActiveSessionId]);
+
   // Fetch sessions on mount
   useEffect(() => {
     fetchSessions();
@@ -128,9 +165,17 @@ export const OperatorCheckIn: React.FC = () => {
         setFlashMessage({ type: 'success', text: data.message, participant: data.participant });
         refreshBackendDataRef.current();
       } else {
-        const isDoubleCheckIn = participantsRef.current.some(
-          (p) => p.rfidCardId?.toUpperCase() === cardId.toUpperCase() && p.isCheckedIn,
+        const matchedRef = participantsRef.current.find(
+          (p) => p.rfidCardId?.toUpperCase() === cardId.toUpperCase(),
         );
+        const isDoubleCheckIn = matchedRef && activeSessionIdRef.current
+          ? checkInLogsRef.current.some(
+              (l) =>
+                l.participantId === matchedRef.id &&
+                l.sessionId === activeSessionIdRef.current &&
+                (l.status === 'PRESENT' || l.status === 'LATE'),
+            )
+          : matchedRef?.isCheckedIn ?? false;
         setRfidStatus(isDoubleCheckIn ? 'warn' : 'error');
         setFlashMessage({
           type: isDoubleCheckIn ? 'warn' : 'error',
@@ -196,7 +241,7 @@ export const OperatorCheckIn: React.FC = () => {
   const filteredParticipants = searchQuery.trim() === ''
     ? []
     : participants.filter(p => 
-        !p.isCheckedIn && 
+        !isParticipantChecked(p) && 
         (p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
          p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
          p.group.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -252,10 +297,10 @@ export const OperatorCheckIn: React.FC = () => {
     return participants
       .filter(p => (p.name || '').toLowerCase().includes(q))
       .map(p => ({ p, score: (p.name || '').toLowerCase().startsWith(q) ? 0 : 1 }))
-      .sort((a, b) => a.score - b.score || (a.p.isCheckedIn === b.p.isCheckedIn ? 0 : a.p.isCheckedIn ? 1 : -1))
+      .sort((a, b) => a.score - b.score || (isParticipantChecked(a.p) === isParticipantChecked(b.p) ? 0 : isParticipantChecked(a.p) ? 1 : -1))
       .slice(0, 8)
       .map(x => x.p);
-  }, [manualName, participants]);
+  }, [manualName, participants, isParticipantChecked]);
 
   // Simulate scanning a random QR code from remaining unchecked participants
   const handleSimulateScan = () => {
@@ -264,7 +309,7 @@ export const OperatorCheckIn: React.FC = () => {
     setFlashMessage(null);
 
     // Filter unchecked participants
-    const remaining = participants.filter(p => !p.isCheckedIn);
+    const remaining = participants.filter(p => !isParticipantChecked(p));
 
     setTimeout(() => {
       setIsScanning(false);
@@ -682,7 +727,7 @@ export const OperatorCheckIn: React.FC = () => {
                             <div className="min-w-0">
                               <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-1.5">
                                 {p.name}
-                                {p.isCheckedIn && (
+                                {isParticipantChecked(p) && (
                                   <span className="shrink-0 text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full">sudah absen</span>
                                 )}
                               </div>
@@ -691,7 +736,7 @@ export const OperatorCheckIn: React.FC = () => {
                                 <span>•</span><span>{p.group}</span><span>•</span><span>{p.origin}</span>
                               </div>
                             </div>
-                            <UserCheck className={`h-4 w-4 shrink-0 ${p.isCheckedIn ? 'text-slate-300' : 'text-blue-600'}`} />
+                            <UserCheck className={`h-4 w-4 shrink-0 ${isParticipantChecked(p) ? 'text-slate-300' : 'text-blue-600'}`} />
                           </button>
                         ))}
                       </motion.div>

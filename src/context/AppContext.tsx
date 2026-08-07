@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../api';
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Participant, CheckInLog, User, PageId, AttendanceSession, DashboardData } from '../types';
 
 interface AppContextType {
@@ -36,6 +36,9 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 
 
+/** Auto logout setelah tidak ada aktivitas selama IDLE_TIMEOUT_MS (1 jam). */
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000;
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -44,6 +47,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [checkInLogs, setCheckInLogs] = useState<CheckInLog[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const lastActivityRef = useRef(Date.now());
 
   // Helper to fetch authorization headers
   const getHeaders = useCallback(() => {
@@ -163,6 +167,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(null);
     setCurrentPage('login');
   };
+
+  // ── Auto logout jika tidak ada aktivitas selama 1 jam ──
+  const updateActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove', 'wheel', 'click'];
+    const listener = () => {
+      updateActivity();
+    };
+    events.forEach((ev) => window.addEventListener(ev, listener, { passive: true }));
+
+    const checkIdle = setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= IDLE_TIMEOUT_MS) {
+        logout();
+      }
+    }, 30000);
+
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, listener));
+      clearInterval(checkIdle);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
 
   const checkInParticipant = async (id: string, operatorName: string) => {
     try {
