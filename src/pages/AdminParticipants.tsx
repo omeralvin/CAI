@@ -237,16 +237,25 @@ export const AdminParticipants: React.FC = () => {
   const filteredParticipants = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return participants.filter((p) => {
+      const name = p.name || '';
+      const id = p.id || '';
+      const origin = p.origin || '';
+      const group = p.group || '';
       const matchSearch =
-        p.name.toLowerCase().includes(q) ||
-        p.id.toLowerCase().includes(q) ||
-        p.origin.toLowerCase().includes(q);
+        name.toLowerCase().includes(q) ||
+        id.toLowerCase().includes(q) ||
+        group.toLowerCase().includes(q) ||
+        origin.toLowerCase().includes(q);
+      const isPresentInSelectedSession =
+        selectedSessionId !== ''
+          ? getSessionStatus(p.id, selectedSessionId).status !== 'Tidak Hadir'
+          : p.isCheckedIn;
       const matchStatus =
         statusFilter === 'all'
           ? true
           : statusFilter === 'present'
-          ? p.isCheckedIn
-          : !p.isCheckedIn;
+          ? isPresentInSelectedSession
+          : !isPresentInSelectedSession;
       const matchGroup = groupFilter === 'all' ? true : p.group === groupFilter;
       const matchCategory =
         categoryFilter === 'all'
@@ -256,7 +265,7 @@ export const AdminParticipants: React.FC = () => {
           : getParticipantCategory(p.origin) === 'PANITIA';
       return matchSearch && matchStatus && matchGroup && matchCategory;
     });
-  }, [participants, searchQuery, statusFilter, groupFilter, categoryFilter]);
+  }, [participants, searchQuery, statusFilter, groupFilter, categoryFilter, selectedSessionId, checkInLogs]);
 
   const sortedParticipants = useMemo(() => {
     if (!sortField) return filteredParticipants;
@@ -472,10 +481,18 @@ export const AdminParticipants: React.FC = () => {
     if (!otsSearchQuery.trim()) return [];
     const q = otsSearchQuery.toLowerCase();
     return participants.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.id.toLowerCase().includes(q) ||
-        p.origin.toLowerCase().includes(q),
+      (p) => {
+        const name = p.name || '';
+        const id = p.id || '';
+        const origin = p.origin || '';
+        const group = p.group || '';
+        return (
+          name.toLowerCase().includes(q) ||
+          id.toLowerCase().includes(q) ||
+          group.toLowerCase().includes(q) ||
+          origin.toLowerCase().includes(q)
+        );
+      },
     ).slice(0, 10);
   }, [participants, otsSearchQuery]);
 

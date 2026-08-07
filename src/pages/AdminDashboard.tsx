@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { DashboardData, AttendanceSession } from '../types';
+import { DashboardData, AttendanceSession, SessionAudience } from '../types';
 import { API_BASE_URL } from '../api';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -34,7 +34,7 @@ export const AdminDashboard: React.FC = () => {
 
   // Create modal
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', date: '', startTime: '07:30', endTime: '09:00', audience: 'ALL' as const });
+  const [createForm, setCreateForm] = useState<{ name: string; date: string; startTime: string; endTime: string; audience: SessionAudience }>({ name: '', date: '', startTime: '07:30', endTime: '09:00', audience: 'ALL' });
   const [submitting, setSubmitting] = useState(false);
 
   // Edit modal

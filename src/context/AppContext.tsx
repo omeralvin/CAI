@@ -54,6 +54,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
+  // Handle expired/invalid token: clear session and redirect to login
+  const handleUnauthorized = useCallback(() => {
+    localStorage.removeItem('cai_token');
+    setCurrentUser(null);
+    setCurrentPage('login');
+  }, []);
+
   // Fetch participants, logs, and sessions from server
   const refreshData = useCallback(async () => {
     const token = localStorage.getItem('cai_token');
@@ -67,22 +74,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetch(`${API_BASE_URL}/sessions`, { headers })
       ]);
 
+      if (partsRes.status === 401 || logsRes.status === 401 || sessRes.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
       if (partsRes.ok) {
         const partsData = await partsRes.json();
-        setParticipants(partsData);
+        setParticipants(Array.isArray(partsData) ? partsData : []);
       }
       if (logsRes.ok) {
         const logsData = await logsRes.json();
-        setCheckInLogs(logsData);
+        setCheckInLogs(Array.isArray(logsData) ? logsData : []);
       }
       if (sessRes.ok) {
         const sessData = await sessRes.json();
-        setSessions(sessData);
+        setSessions(Array.isArray(sessData) ? sessData : []);
       }
     } catch (error) {
       console.error('Error refreshing backend data:', error);
     }
-  }, []);
+  }, [handleUnauthorized]);
 
   // Check login session on mount
   useEffect(() => {
