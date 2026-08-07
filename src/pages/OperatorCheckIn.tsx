@@ -276,6 +276,7 @@ export const OperatorCheckIn: React.FC = () => {
   };
 
   const handleManualNameSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     const name = manualName.trim();
     if (!name) return;
     const matches = participants.filter(p => (p.name || '').trim().toLowerCase() === name.toLowerCase());
