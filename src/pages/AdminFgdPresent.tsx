@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { API_BASE_URL } from '../api';
 import { fetchFgdThemes, fgdThemeLabelFor } from '../utils/fgdThemes';
 import logoWarna from '../../assets/image/logo_warna.png';
-import { ChevronLeft, ChevronRight, X, Monitor, MonitorDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Monitor, MonitorDown, Play, Pause, RotateCcw } from 'lucide-react';
 const GROUPS = Array.from({ length: 15 }, (_, i) => i + 1);
 
 function getHeaders() {
@@ -23,7 +23,10 @@ export const AdminFgdPresent: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showNav, setShowNav] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [timerSeconds, setTimerSeconds] = useState(10 * 60);
+  const [timerRunning, setTimerRunning] = useState(false);
   const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerResetKeyRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const fetchAll = async () => {
@@ -56,6 +59,58 @@ export const AdminFgdPresent: React.FC = () => {
 
   const goToPrev = useCallback(() => { if (canPrev) goTo(currentIndex - 1); }, [canPrev, currentIndex, goTo]);
   const goToNext = useCallback(() => { if (canNext) goTo(currentIndex + 1); }, [canNext, currentIndex, goTo]);
+
+  // ── Timer presentasi (durasi per sesi diatur admin) ──
+  const currentTheme = themes.find(t => t.name === current?.sessionName);
+  const timerMinutes = currentTheme?.timerMinutes || 10;
+
+  useEffect(() => {
+    if (!current) return;
+    const key = `${current.groupNumber}-${current.sessionName}|${timerMinutes}`;
+    if (timerResetKeyRef.current === key) return;
+    timerResetKeyRef.current = key;
+    setTimerSeconds(timerMinutes * 60);
+    setTimerRunning(false);
+  }, [current, timerMinutes]);
+
+  useEffect(() => {
+    if (!timerRunning) return;
+    const id = window.setInterval(() => {
+      setTimerSeconds(s => {
+        if (s <= 1) {
+          setTimerRunning(false);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [timerRunning]);
+
+  const toggleTimer = () => {
+    if (timerSeconds <= 0) {
+      setTimerSeconds(timerMinutes * 60);
+      setTimerRunning(true);
+    } else {
+      setTimerRunning(r => !r);
+    }
+    showNavTemporarily();
+  };
+
+  const resetTimer = () => {
+    setTimerSeconds(timerMinutes * 60);
+    setTimerRunning(false);
+    showNavTemporarily();
+  };
+
+  const fmtTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const ss = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  };
+
+  const timerExpired = timerSeconds <= 0;
+  const timerLow = !timerExpired && timerSeconds <= 60;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -150,8 +205,20 @@ export const AdminFgdPresent: React.FC = () => {
             {current.authorName && <span className="ml-2 text-slate-400">| Notulis: {current.authorName}</span>}
           </p>
         </div>
-        <div className="text-xs sm:text-sm text-slate-400 font-medium whitespace-nowrap">
-          {currentIndex + 1} / {slides.length}
+        <div className="flex items-center gap-3 sm:gap-4">
+          {/* Timer */}
+          <div className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl border transition-colors ${timerExpired ? 'bg-rose-600 text-white border-rose-700 animate-pulse' : timerLow ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-white text-slate-800 border-slate-300'}`}>
+            <span className="hidden sm:block text-[10px] font-bold uppercase tracking-wide opacity-70">Timer</span>
+            <span className="font-mono font-bold tabular-nums tracking-wider text-lg sm:text-2xl">
+              {fmtTime(timerSeconds)}
+            </span>
+            {timerExpired && (
+              <span className="text-[10px] font-bold uppercase tracking-wide text-white">Waktu Habis</span>
+            )}
+          </div>
+          <div className="text-xs sm:text-sm text-slate-400 font-medium whitespace-nowrap">
+            {currentIndex + 1} / {slides.length}
+          </div>
         </div>
       </div>
 
@@ -258,6 +325,20 @@ export const AdminFgdPresent: React.FC = () => {
             </button>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={toggleTimer}
+              className="p-2 rounded-lg hover:bg-white/10 transition-all"
+              title={timerRunning ? 'Jeda Timer' : 'Mulai Timer'}
+            >
+              {timerRunning ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+            </button>
+            <button
+              onClick={resetTimer}
+              className="p-2 rounded-lg hover:bg-white/10 transition-all"
+              title="Reset Timer"
+            >
+              <RotateCcw className="h-5 w-5" />
+            </button>
             <button
               onClick={toggleFullscreen}
               className="p-2 rounded-lg hover:bg-white/10 transition-all"

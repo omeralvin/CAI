@@ -61,6 +61,7 @@ export interface FgdTheme {
   name: string; // "Sesi 1", "Sesi 2", ...
   theme: string; // tema / materi sesi
   order: number;
+  timerMinutes: number; // durasi presentasi layar (menit)
 }
 
 export interface FgdMinute {
