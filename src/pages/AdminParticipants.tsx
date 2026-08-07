@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '../context/AppContext';
 import { Participant, CheckInLog } from '../types';
 import { getParticipantCategory, CATEGORY_LABEL } from '../utils/participantCategory';
+import { autoDetectActiveSession } from '../utils/activeSession';
 import {
   Users,
   Search,
@@ -128,6 +129,15 @@ export const AdminParticipants: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'peserta' | 'panitia'>('all');
   const [groupFilter, setGroupFilter] = useState<string>('all');
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+
+  const sessionUserSelected = useRef(false);
+
+  useEffect(() => {
+    if (sessions.length > 0 && !sessionUserSelected.current) {
+      const detected = autoDetectActiveSession(sessions);
+      setSelectedSessionId(detected || '');
+    }
+  }, [sessions]);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -766,7 +776,10 @@ export const AdminParticipants: React.FC = () => {
           </div>
           <select
             value={selectedSessionId}
-            onChange={(e) => setSelectedSessionId(e.target.value)}
+            onChange={(e) => {
+              sessionUserSelected.current = true;
+              setSelectedSessionId(e.target.value);
+            }}
             className="flex-1 w-full sm:w-auto px-3 py-2.5 border border-blue-200 bg-blue-50/30 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">-- Pilih Sesi Aktif --</option>

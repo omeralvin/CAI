@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { DashboardData, AttendanceSession, SessionAudience } from '../types';
+import { autoDetectActiveSession } from '../utils/activeSession';
 import { API_BASE_URL } from '../api';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -60,9 +61,10 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     if (sessions.length > 0 && !selectedSessionId) {
-      const latest = sessions[sessions.length - 1];
-      setSelectedSessionId(latest.id);
-      loadDashboard(latest.id);
+      const detected = autoDetectActiveSession(sessions);
+      const targetId = detected || sessions[sessions.length - 1].id;
+      setSelectedSessionId(targetId);
+      loadDashboard(targetId);
     }
   }, [sessions, selectedSessionId, loadDashboard]);
 

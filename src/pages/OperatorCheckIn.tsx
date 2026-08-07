@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Participant, AttendanceSession } from '../types';
+import { autoDetectActiveSession, getSessionPhase } from '../utils/activeSession';
 import { API_BASE_URL } from '../api';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -26,7 +27,6 @@ import {
 
 const RFID_BUFFER_TIMEOUT_MS = 2000;
 const RFID_MAX_BUFFER_LENGTH = 32;
-const EARLY_BUFFER_MINUTES = 20;
 
 export const OperatorCheckIn: React.FC = () => {
   const { participants, checkInParticipant, currentUser, checkInLogs, sessions, fetchSessions, activeSessionId, setActiveSessionId, refreshBackendData } = useApp();
@@ -81,74 +81,7 @@ export const OperatorCheckIn: React.FC = () => {
   const userManuallySelected = useRef(false);
 
   const getSessionStatus = useCallback((session: AttendanceSession): 'active' | 'soon' | 'upcoming' | 'past' => {
-    const now = new Date();
-    const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
-
-    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-    const currentDayName = dayNames[now.getDay()];
-    const todayStr = now.toISOString().split('T')[0];
-
-    const sessionDate = session.date ? new Date(session.date).toISOString().split('T')[0] : '';
-    if (sessionDate !== todayStr && session.dayName !== currentDayName) return 'past';
-
-    const [startH, startM] = session.startTime.split(':').map(Number);
-    const [endH, endM] = session.endTime.split(':').map(Number);
-    const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
-    const openMinutes = startMinutes - EARLY_BUFFER_MINUTES;
-
-    if (currentTimeMinutes >= openMinutes && currentTimeMinutes <= endMinutes) return 'active';
-    if (currentTimeMinutes < openMinutes && currentTimeMinutes >= startMinutes - 120) return 'soon';
-    if (currentTimeMinutes < openMinutes) return 'upcoming';
-    return 'past';
-  }, []);
-
-  const autoDetectActiveSession = useCallback((sessionsList: AttendanceSession[]): string | null => {
-    const now = new Date();
-    const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
-
-    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-    const currentDayName = dayNames[now.getDay()];
-    const todayStr = now.toISOString().split('T')[0];
-
-    const todaySessions = sessionsList.filter(s => {
-      const sessionDate = s.date ? new Date(s.date).toISOString().split('T')[0] : '';
-      return sessionDate === todayStr || s.dayName === currentDayName;
-    });
-
-    // First pass: find an active session (within [start - buffer, end])
-    for (const session of todaySessions) {
-      const [startH, startM] = session.startTime.split(':').map(Number);
-      const [endH, endM] = session.endTime.split(':').map(Number);
-      const startMinutes = startH * 60 + startM;
-      const endMinutes = endH * 60 + endM;
-      const openMinutes = startMinutes - EARLY_BUFFER_MINUTES;
-
-      if (currentTimeMinutes >= openMinutes && currentTimeMinutes <= endMinutes) {
-        return session.id;
-      }
-    }
-
-    // Second pass: find the closest upcoming session that starts within 2 hours
-    let closestSession: AttendanceSession | null = null;
-    let smallestDiff = Infinity;
-    const MAX_UPCOMING_WINDOW = 120;
-
-    for (const session of todaySessions) {
-      const [startH, startM] = session.startTime.split(':').map(Number);
-      const [endH, endM] = session.endTime.split(':').map(Number);
-      const startMinutes = startH * 60 + startM;
-
-      if (currentTimeMinutes > endH * 60 + endM) continue;
-
-      const diff = startMinutes - currentTimeMinutes;
-      if (diff >= 0 && diff < smallestDiff && diff <= MAX_UPCOMING_WINDOW) {
-        smallestDiff = diff;
-        closestSession = session;
-      }
-    }
-
-    return closestSession ? closestSession.id : null;
+    return getSessionPhase(session);
   }, []);
 
   useEffect(() => {
