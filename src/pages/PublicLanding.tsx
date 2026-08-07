@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 import { fetchFgdThemes, fgdThemeLabel, fgdThemeLabelFor } from '../utils/fgdThemes';
 import logoWarna from '../../assets/image/logo_warna.png';
 import { API_BASE_URL } from '../api';
-import { ChevronDown, FileText, LogIn, AlertTriangle, Edit3, PlusCircle, User, Calendar } from 'lucide-react';
+import { ChevronDown, FileText, AlertTriangle, Edit3, PlusCircle, User, Calendar } from 'lucide-react';
 
 const GROUPS = Array.from({ length: 15 }, (_, i) => i + 1);
 const LS_GROUP_KEY = 'lastSubmittedGroup';
@@ -445,17 +445,14 @@ export const PublicLanding: React.FC = () => {
         )}
       </main>
 
-      <footer className="border-t border-slate-200/60 bg-white/80 py-4">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between">
-          <span className="text-[11px] text-slate-400 font-medium">
-            &copy; 2026 Cinta Alam Indonesia
-          </span>
+<footer className="border-t border-slate-200/60 bg-white/80 py-4">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-center">
           <button
+            type="button"
             onClick={() => setCurrentPage('login')}
-            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-blue-600 transition-colors"
+            className="text-[11px] text-slate-400 font-medium cursor-default select-none"
           >
-            <LogIn className="h-3 w-3" />
-            Login Admin
+            &copy; 2026 Cinta Alam Indonesia
           </button>
         </div>
       </footer>
