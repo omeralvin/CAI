@@ -18,7 +18,7 @@ import { AdminFgdPrint } from './pages/AdminFgdPrint';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AppContent() {
-  const { currentUser, currentPage, isAuthLoading } = useApp();
+  const { currentUser, currentPage, isAuthLoading, setCurrentPage } = useApp();
 
   if (isAuthLoading) {
     return (
@@ -107,9 +107,16 @@ function AppContent() {
           </AnimatePresence>
         </div>
         
-        {/* Humble, Professional Footer */}
-        <footer className="py-6 px-8 border-t border-slate-200/50 bg-white/50 text-center text-[10px] font-mono text-slate-400">
-          <span>Administrasi CAI © 2026 • Dirancang untuk Kerapihan & Presisi Presensi Lapangan</span>
+{/* Humble, Professional Footer — teks hak cipta juga berfungsi sbg tombol admin rahasia (hanya untuk admin) */}
+        <footer className="py-6 px-8 border-t border-slate-200/50 bg-white/50 text-center">
+          <button
+            type="button"
+            onClick={() => { if (currentUser?.role === 'admin') setCurrentPage('admin-dashboard'); }}
+            className="text-[10px] font-mono text-slate-400 cursor-default select-none"
+            title=""
+          >
+            <span>Administrasi CAI © 2026 • Dirancang untuk Kerapihan & Presisi Presensi Lapangan</span>
+          </button>
         </footer>
       </main>
     </div>
