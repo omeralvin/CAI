@@ -291,7 +291,7 @@ export const PublicLanding: React.FC = () => {
             <RecapCard label="Usulan Permasalahan" content={data.usulanPermasalahan} />
 
             <h3 className="text-sm font-bold text-blue-700 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 mb-3 mt-6">
-              PROBLEM - PENYEBAB - SOLUSI
+              PROBLEM - PENYEBAB
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <RecapCard label="Problem" content={data.problem} />
