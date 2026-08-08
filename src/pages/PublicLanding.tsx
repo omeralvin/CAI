@@ -296,15 +296,15 @@ export const PublicLanding: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <RecapCard label="Problem" content={data.problem} />
               <RecapCard label="Penyebab" content={data.penyebab} />
-              <RecapCard label="Solusi" content={data.solusi} />
+               {/*<RecapCard label="Solusi" content={data.solusi} />*/}
             </div>
 
             <h3 className="text-sm font-bold text-blue-700 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 mb-3 mt-6">
               ACTION PLAN
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <RecapCard label="Bidang PPG" content={data.actionPlanBidangPpg} />
-              <RecapCard label="Deskripsi" content={data.actionPlanDeskripsi} />
+              <RecapCard label="Bidang Terkait" content={data.actionPlanBidangPpg} />
+              {/*<RecapCard label="Deskripsi" content={data.actionPlanDeskripsi} />*/}
               <RecapCard label="Nama Kegiatan" content={data.actionPlanNamaKegiatan} />
               <RecapCard label="Peserta" content={data.actionPlanPeserta} />
               <RecapCard label="Waktu" content={data.actionPlanWaktu} />
