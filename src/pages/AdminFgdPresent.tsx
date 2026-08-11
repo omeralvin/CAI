@@ -17,7 +17,7 @@ function getHeaders() {
 }
 
 export const AdminFgdPresent: React.FC = () => {
-  const { setCurrentPage } = useApp();
+  const { setCurrentPage, logout } = useApp();
   const [allData, setAllData] = useState<FgdMinute[]>([]);
   const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,15 +35,24 @@ export const AdminFgdPresent: React.FC = () => {
   const timerResetKeyRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const fetchAll = async () => {
+  const fetchAll = async (retries = 2) => {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/notulis`, { headers: getHeaders() });
+      if (res.status === 401) {
+        logout();
+        return;
+      }
       if (res.ok) {
         const data: FgdMinute[] = await res.json();
-        setAllData(data);
+        setAllData(Array.isArray(data) ? data : []);
+        setLoading(false);
+        return;
       }
-    } catch { } finally {
+    } catch { }
+    if (retries > 0) {
+      setTimeout(() => fetchAll(retries - 1), 1000);
+    } else {
       setLoading(false);
     }
   };
@@ -51,7 +60,7 @@ export const AdminFgdPresent: React.FC = () => {
   useEffect(() => { fetchAll(); }, []);
   useEffect(() => { fetchFgdThemes().then(setThemes); }, []);
 
-  const slides = allData.sort((a, b) =>
+  const slides = [...allData].sort((a, b) =>
     a.groupNumber - b.groupNumber || a.sessionName.localeCompare(b.sessionName)
   );
 
@@ -162,6 +171,10 @@ export const AdminFgdPresent: React.FC = () => {
     (async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/sessions`, { headers: getHeaders() });
+        if (res.status === 401) {
+          logout();
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
           setAttendanceSessions(Array.isArray(data) ? data : []);
@@ -179,6 +192,10 @@ export const AdminFgdPresent: React.FC = () => {
           ? `${API_BASE_URL}/analytics/dashboard?sessionId=${encodeURIComponent(attendanceSessionId)}`
           : `${API_BASE_URL}/analytics/dashboard`;
         const res = await fetch(url, { headers: getHeaders() });
+        if (res.status === 401) {
+          logout();
+          return;
+        }
         if (res.ok) {
           const data: DashboardData = await res.json();
           setAttendance(data);

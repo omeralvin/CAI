@@ -199,7 +199,7 @@ const FgdThemeManager: React.FC<{
 };
 
 export const AdminFgd: React.FC = () => {
-  const { setCurrentPage } = useApp();
+  const { setCurrentPage, logout } = useApp();
   const [tab, setTab] = useState<TabId>('rekap');
   const [allData, setAllData] = useState<FgdMinute[]>([]);
   const [loading, setLoading] = useState(true);
@@ -210,6 +210,7 @@ export const AdminFgd: React.FC = () => {
   const [sessionFilter, setSessionFilter] = useState('Semua Sesi');
   const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
 
   const loadThemes = async () => {
     const data = await fetchFgdThemes();
@@ -218,15 +219,26 @@ export const AdminFgd: React.FC = () => {
 
   useEffect(() => { loadThemes(); }, []);
 
-  const fetchAll = async () => {
+  const fetchAll = async (retries = 2) => {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/notulis`, { headers: getHeaders() });
+      if (res.status === 401) {
+        logout();
+        return;
+      }
       if (res.ok) {
         const data: FgdMinute[] = await res.json();
-        setAllData(data);
+        setAllData(Array.isArray(data) ? data : []);
+        setFetchError(false);
+        setLoading(false);
+        return;
       }
-    } catch { } finally {
+    } catch { }
+    if (retries > 0) {
+      setTimeout(() => fetchAll(retries - 1), 1000);
+    } else {
+      setFetchError(true);
       setLoading(false);
     }
   };
@@ -402,6 +414,12 @@ export const AdminFgd: React.FC = () => {
               </span>
             )}
           </div>
+          {fetchError && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              Gagal memuat data dari server. Menampilkan data yang tersimpan terakhir — muat ulang halaman untuk mencoba lagi.
+            </div>
+          )}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-xs">

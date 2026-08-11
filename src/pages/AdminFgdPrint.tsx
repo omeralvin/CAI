@@ -14,7 +14,7 @@ function getHeaders() {
 }
 
 export const AdminFgdPrint: React.FC = () => {
-  const { setCurrentPage } = useApp();
+  const { setCurrentPage, logout } = useApp();
   const [allData, setAllData] = useState<FgdMinute[]>([]);
   const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,18 +23,31 @@ export const AdminFgdPrint: React.FC = () => {
   useEffect(() => { fetchFgdThemes().then(setThemes); }, []);
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+    const load = async (retries = 2) => {
       try {
         const res = await fetch(`${API_BASE_URL}/notulis${groupFilter ? `?group=${groupFilter}` : ''}`, { headers: getHeaders() });
+        if (res.status === 401) {
+          logout();
+          return;
+        }
         if (res.ok) {
           const data: FgdMinute[] = await res.json();
+          if (cancelled) return;
           const sorted = (Array.isArray(data) ? data : [data]).sort((a, b) => a.groupNumber - b.groupNumber || a.sessionName.localeCompare(b.sessionName));
           setAllData(sorted);
+          setLoading(false);
+          return;
         }
-      } catch { } finally {
+      } catch { }
+      if (retries > 0) {
+        setTimeout(() => { if (!cancelled) load(retries - 1); }, 1000);
+      } else if (!cancelled) {
         setLoading(false);
       }
-    })();
+    };
+    load();
+    return () => { cancelled = true; };
   }, [groupFilter]);
 
   const handlePrint = () => window.print();
