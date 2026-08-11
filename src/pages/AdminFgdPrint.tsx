@@ -184,8 +184,8 @@ export const AdminFgdPrint: React.FC = () => {
 
       <style>{`
         @page {
-          size: A4 landscape;
-          margin: 12mm 10mm;
+          size: A4 portrait;
+          margin: 8mm 7mm;
         }
         @media print {
           body { 
@@ -206,7 +206,7 @@ export const AdminFgdPrint: React.FC = () => {
           .no-print { display: flex; }
           .print-container { 
             padding: 80px 20px 20px; 
-            max-width: 1200px; 
+            max-width: 800px; 
             margin: 0 auto; 
           }
           .print-page {
@@ -220,23 +220,23 @@ export const AdminFgdPrint: React.FC = () => {
         }
         .card-block {
           border: 1px solid #e2e8f0;
-          border-radius: 12px;
+          border-radius: 10px;
           overflow: hidden;
-          margin-bottom: 12px;
+          margin-bottom: 8px;
         }
         .card-header {
           background: #2e32a3;
           color: white;
           font-weight: 700;
-          padding: 8px 16px;
-          font-size: 13px;
+          padding: 5px 12px;
+          font-size: 11px;
         }
         .card-body {
-          padding: 12px 16px;
-          font-size: 13px;
+          padding: 8px 12px;
+          font-size: 12px;
           color: #334155;
           white-space: pre-wrap;
-          line-height: 1.6;
+          line-height: 1.5;
         }
         .grid {
           display: grid;
@@ -244,16 +244,16 @@ export const AdminFgdPrint: React.FC = () => {
         .grid-cols-2 { grid-template-columns: 1fr 1fr; }
         .grid-cols-3 { grid-template-columns: 1fr 1fr 1fr; }
         .divide-x > * + * { border-left: 1px solid #e2e8f0; }
-        .p-4 { padding: 12px 16px; }
+        .p-4 { padding: 8px 12px; }
         .border-b-0 { border-bottom: none; }
-        .text-xs { font-size: 11px; }
-        .text-sm { font-size: 13px; }
-        .text-xl { font-size: 20px; }
+        .text-xs { font-size: 10px; }
+        .text-sm { font-size: 12px; }
+        .text-xl { font-size: 18px; }
         .font-bold { font-weight: 700; }
         .tracking-tight { letter-spacing: -0.02em; }
         .leading-tight { line-height: 1.25; }
         .whitespace-pre-wrap { white-space: pre-wrap; }
-        .leading-relaxed { line-height: 1.6; }
+        .leading-relaxed { line-height: 1.5; }
         .uppercase { text-transform: uppercase; }
         .tracking-wide { letter-spacing: 0.05em; }
         .text-blue-700 { color: #242784; }
@@ -263,13 +263,13 @@ export const AdminFgdPrint: React.FC = () => {
         .text-slate-800 { color: #1e293b; }
         .italic { font-style: italic; }
         .text-right { text-align: right; }
-        .mt-3 { margin-top: 12px; }
-        .mb-5 { margin-bottom: 20px; }
+        .mt-3 { margin-top: 6px; }
+        .mb-5 { margin-bottom: 12px; }
         .flex { display: flex; }
         .items-center { align-items: center; }
-        .gap-4 { gap: 16px; }
+        .gap-4 { gap: 12px; }
         .flex-1 { flex: 1; }
-        .h-14 { height: 56px; }
+        .h-14 { height: 40px; }
         .w-auto { width: auto; }
         .ml-2 { margin-left: 8px; }
       `}</style>
