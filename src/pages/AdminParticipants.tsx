@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { Participant, CheckInLog } from '../types';
 import { getParticipantCategory, CATEGORY_LABEL } from '../utils/participantCategory';
 import { autoDetectActiveSession } from '../utils/activeSession';
+import { formatLateDuration } from '../utils/format';
 import {
   Users,
   Search,
@@ -231,8 +232,7 @@ export const AdminParticipants: React.FC = () => {
     );
     if (!log) return { status: 'Tidak Hadir' as const, detail: '-' };
     if (log.isLate) {
-      const mins = log.lateDuration ?? 0;
-      return { status: 'Terlambat' as const, detail: `Terlambat ${mins} Mnt` };
+      return { status: 'Terlambat' as const, detail: `Terlambat ${formatLateDuration(log.lateDuration)}` };
     }
     return { status: 'Hadir' as const, detail: 'Tepat Waktu' };
   };

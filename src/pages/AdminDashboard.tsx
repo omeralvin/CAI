@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { DashboardData, AttendanceSession, SessionAudience } from '../types';
 import { autoDetectActiveSession } from '../utils/activeSession';
+import { formatLateDuration } from '../utils/format';
 import { API_BASE_URL } from '../api';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -391,7 +392,7 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                       </div>
                       <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg shrink-0">
-                        +{item.lateDuration ?? 0} mnt
+                        {formatLateDuration(item.lateDuration)}
                       </span>
                     </div>
                   ))
