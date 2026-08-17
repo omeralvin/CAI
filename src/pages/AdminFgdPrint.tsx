@@ -115,14 +115,6 @@ export const AdminFgdPrint: React.FC = () => {
               </div>
             </div>
 
-            {/* USULAN PERMASALAHAN */}
-            <div className="card-block">
-              <div className="card-header">USULAN PERMASALAHAN</div>
-              <div className="card-body">
-                {d.usulanPermasalahan || '-'}
-              </div>
-            </div>
-
             {/* PROBLEM - PENYEBAB - SOLUSI */}
             <div className="card-block">
               <div className="card-header">PROBLEM - PENYEBAB - SOLUSI</div>

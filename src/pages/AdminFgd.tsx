@@ -686,7 +686,6 @@ export const AdminFgd: React.FC = () => {
             </div>
             <div className="p-6 space-y-4">
               {[
-                { title: 'USULAN PERMASALAHAN', fields: [['Usulan Permasalahan', previewData.usulanPermasalahan]] },
                 { title: 'PROBLEM - PENYEBAB - SOLUSI', fields: [
                   ['Problem', previewData.problem],
                   ['Penyebab', previewData.penyebab],

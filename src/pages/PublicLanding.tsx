@@ -292,17 +292,12 @@ export const PublicLanding: React.FC = () => {
             </div>
 
             <h3 className="text-sm font-bold text-blue-700 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 mb-3">
-              USULAN PERMASALAHAN
-            </h3>
-            <RecapCard label="Usulan Permasalahan" content={data.usulanPermasalahan} />
-
-            <h3 className="text-sm font-bold text-blue-700 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 mb-3 mt-6">
-              PROBLEM - PENYEBAB
+              PROBLEM - PENYEBAB - SOLUSI
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <RecapCard label="Problem" content={data.problem} />
               <RecapCard label="Penyebab" content={data.penyebab} />
-               {/*<RecapCard label="Solusi" content={data.solusi} />*/}
+              <RecapCard label="Solusi" content={data.solusi} />
             </div>
 
             <h3 className="text-sm font-bold text-blue-700 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 mb-3 mt-6">

@@ -5,9 +5,9 @@ import { Bold, List, ListOrdered } from 'lucide-react';
 type FgdFormData = Omit<FgdMinute, 'id' | 'createdAt' | 'updatedAt' | 'groupNumber'>;
 
 const REQUIRED_FIELDS: (keyof FgdFormData)[] = [
-  'usulanPermasalahan',
   'problem',
   'penyebab',
+  'solusi',
   'actionPlanBidangPpg',
   'actionPlanDeskripsi',
   'actionPlanNamaKegiatan',
@@ -255,23 +255,11 @@ export const FgdForm: React.FC<FgdFormProps> = ({ groupNumber, initialData, sess
         </div>
       </div>
 
-      {sectionTitle('USULAN PERMASALAHAN')}
-      <FieldGroup
-        label="Usulan Permasalahan"
-        value={form.usulanPermasalahan}
-        onChange={v => update('usulanPermasalahan', v)}
-        disabled={disabled}
-        rows={4}
-        placeholder="Tuliskan poin-poin usulan permasalahan di sini...&#10;Contoh:&#10;1. Masalah A&#10;2. Masalah B"
-        error={errors.usulanPermasalahan}
-      />
-
-      {sectionTitle('PROBLEM - PENYEBAB')}
+      {sectionTitle('PROBLEM - PENYEBAB - SOLUSI')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FieldGroup label="Problem" value={form.problem} onChange={v => update('problem', v)} disabled={disabled} rows={4} placeholder="Tuliskan problem utama..." error={errors.problem} />
         <FieldGroup label="Penyebab" value={form.penyebab} onChange={v => update('penyebab', v)} disabled={disabled} rows={4} placeholder="Tuliskan akar penyebab..." error={errors.penyebab} />
-        {/* Field Solusi disembunyikan dari form (landing & input admin). Nilai lama tetap dipertahankan saat edit melalui initialData.
-            <FieldGroup label="Solusi" value={form.solusi} onChange={v => update('solusi', v)} disabled={disabled} rows={4} placeholder="Tuliskan usulan solusi..." error={errors.solusi} /> */}
+        <FieldGroup label="Solusi" value={form.solusi} onChange={v => update('solusi', v)} disabled={disabled} rows={4} placeholder="Tuliskan usulan solusi..." error={errors.solusi} />
       </div>
 
       {sectionTitle('ACTION PLAN')}

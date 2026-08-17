@@ -388,14 +388,6 @@ export const AdminFgdPresent: React.FC = () => {
         ) : (
         <div className="max-w-5xl mx-auto space-y-4 sm:space-y-5">
 
-          {/* USULAN PERMASALAHAN */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <div className="bg-blue-600 text-white px-4 py-2 font-bold text-sm sm:text-base">USULAN PERMASALAHAN</div>
-            <div className="px-4 py-3 text-sm sm:text-base text-slate-700 whitespace-pre-wrap leading-relaxed">
-              {current.usulanPermasalahan || '-'}
-            </div>
-          </div>
-
           {/* PROBLEM - PENYEBAB - SOLUSI */}
           <div className="border border-slate-200 rounded-xl overflow-hidden">
             <div className="bg-blue-600 text-white px-4 py-2 font-bold text-sm sm:text-base">PROBLEM - PENYEBAB - SOLUSI</div>
