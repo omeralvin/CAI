@@ -30,7 +30,7 @@ function RecapCard({ label, content }: { label: string; content: string }) {
 export const PublicLanding: React.FC = () => {
   const { setCurrentPage } = useApp();
   const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
-  const [selectedSession, setSelectedSession] = useState(() => localStorage.getItem(LS_LAST_SESSION_KEY) || 'Sesi 1');
+  const [selectedSession, setSelectedSession] = useState(() => localStorage.getItem(LS_LAST_SESSION_KEY) || '');
   const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [data, setData] = useState<FgdMinute | null>(null);
   const [loading, setLoading] = useState(false);
@@ -44,6 +44,12 @@ export const PublicLanding: React.FC = () => {
   useEffect(() => {
     fetchFgdThemes().then(setThemes);
   }, []);
+
+  useEffect(() => {
+    if (themes.length > 0 && (!selectedSession || !themes.some(t => t.name === selectedSession))) {
+      setSelectedSession(themes[0].name);
+    }
+  }, [themes, selectedSession]);
 
   useEffect(() => {
     const lastGroup = localStorage.getItem(LS_GROUP_KEY);

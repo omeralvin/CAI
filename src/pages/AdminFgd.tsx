@@ -12,7 +12,7 @@ import {
 const GROUPS = Array.from({ length: 15 }, (_, i) => i + 1);
 
 const emptyForm: Omit<FgdMinute, 'id' | 'createdAt' | 'updatedAt' | 'groupNumber'> = {
-  sessionName: 'Sesi 1',
+  sessionName: '',
   authorName: null,
   usulanPermasalahan: '',
   problem: '',
@@ -144,7 +144,12 @@ const FgdThemeManager: React.FC<{
                   </div>
                   <div className="flex gap-2">
                     <button onClick={handleSaveEdit} disabled={busy}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition-colors disabled:opacity-50">Simpan</button>
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5">
+                      {busy && (
+                        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                      )}
+                      {busy ? 'Menyimpan...' : 'Simpan'}
+                    </button>
                     <button onClick={() => setEditId(null)}
                       className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] font-bold rounded-lg transition-colors">Batal</button>
                   </div>
@@ -188,7 +193,14 @@ const FgdThemeManager: React.FC<{
             </div>
             <button onClick={handleAdd} disabled={busy}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
-              <Plus className="h-3.5 w-3.5" /> Tambah Sesi
+              {busy ? (
+                <>
+                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                  Menyimpan...
+                </>
+              ) : (
+                <><Plus className="h-3.5 w-3.5" /> Tambah Sesi</>
+              )}
             </button>
           </div>
           <p className="text-[10px] text-slate-400 mt-2">Durasi ini dipakai sebagai timer presentasi layar lebar saat sesi dibawakan. Sesi yang dihapus tidak akan muncul lagi di form publik & admin, namun data notulis lama tetap aman.</p>
@@ -207,6 +219,8 @@ export const AdminFgd: React.FC = () => {
   const [editData, setEditData] = useState<FgdMinute | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [sessionFilter, setSessionFilter] = useState('Semua Sesi');
   const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -257,6 +271,7 @@ export const AdminFgd: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
+    setDeleting(true);
     try {
       const res = await fetch(`${API_BASE_URL}/notulis/${id}`, {
         method: 'DELETE',
@@ -264,7 +279,7 @@ export const AdminFgd: React.FC = () => {
       });
       if (res.ok) {
         showMessage('success', 'Data berhasil dihapus');
-        fetchAll();
+        await fetchAll();
       } else {
         showMessage('error', 'Gagal menghapus data');
       }
@@ -272,10 +287,12 @@ export const AdminFgd: React.FC = () => {
       showMessage('error', 'Gagal terhubung ke server');
     }
     setDeleteConfirm(null);
+    setDeleting(false);
   };
 
   const handleSubmitForm = async (formData: Omit<FgdMinute, 'id' | 'createdAt' | 'updatedAt' | 'groupNumber'>) => {
     if (selectedGroup === null) return;
+    setSaving(true);
     try {
       const res = await fetch(`${API_BASE_URL}/notulis`, {
         method: 'POST',
@@ -284,12 +301,18 @@ export const AdminFgd: React.FC = () => {
       });
       if (res.ok) {
         showMessage('success', `Data Grup ${selectedGroup} berhasil disimpan!`);
-        fetchAll();
+        await fetchAll();
+        setEditData(null);
+        setSelectedGroup(null);
+        setTab('rekap');
       } else {
-        showMessage('error', 'Gagal menyimpan data');
+        const err = await res.json().catch(() => null);
+        showMessage('error', err?.message || 'Gagal menyimpan data');
       }
     } catch {
       showMessage('error', 'Gagal terhubung ke server');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -420,7 +443,13 @@ export const AdminFgd: React.FC = () => {
               Gagal memuat data dari server. Menampilkan data yang tersimpan terakhir — muat ulang halaman untuk mencoba lagi.
             </div>
           )}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div className="relative bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+            {loading && (
+              <div className="absolute inset-0 z-10 bg-white/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+                <svg className="animate-spin h-8 w-8 text-blue-600" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                <p className="text-sm font-semibold text-slate-500">Memuat data...</p>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -521,7 +550,7 @@ export const AdminFgd: React.FC = () => {
               </div>
               <div className="relative flex-1">
                 <select
-                  value={editData?.sessionName ?? 'Sesi 1'}
+                  value={editData?.sessionName ?? ''}
                   onChange={e => {
                     const session = e.target.value;
                     if (selectedGroup !== null) {
@@ -532,6 +561,7 @@ export const AdminFgd: React.FC = () => {
                   className="w-full appearance-none px-4 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                   disabled={selectedGroup === null}
                 >
+                  <option value="">-- Pilih Sesi --</option>
                   {themes.map(t => (
                     <option key={t.id} value={t.name}>{fgdThemeLabel(t)}</option>
                   ))}
@@ -547,13 +577,21 @@ export const AdminFgd: React.FC = () => {
             )}
           </div>
           {selectedGroup !== null ? (
-            <FgdForm
-              key={`${selectedGroup}-${editData?.sessionName ?? 'Sesi 1'}`}
-              groupNumber={selectedGroup}
-              initialData={editData}
-              sessionLabel={fgdThemeLabelFor(themes, editData?.sessionName ?? 'Sesi 1')}
-              onSubmit={handleSubmitForm}
-            />
+            editData?.sessionName ? (
+              <FgdForm
+                key={`${selectedGroup}-${editData?.sessionName ?? ''}`}
+                groupNumber={selectedGroup}
+                initialData={editData}
+                sessionLabel={fgdThemeLabelFor(themes, editData?.sessionName ?? '')}
+                onSubmit={handleSubmitForm}
+                disabled={saving}
+              />
+            ) : (
+              <div className="text-center py-12 text-slate-400">
+                <FileEdit className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                <p className="text-sm font-medium">Pilih sesi untuk memulai input data</p>
+              </div>
+            )
           ) : (
             <div className="text-center py-12 text-slate-400">
               <FileEdit className="h-10 w-10 mx-auto mb-2 opacity-40" />
@@ -588,11 +626,16 @@ export const AdminFgd: React.FC = () => {
               </div>
             </div>
             <div className="flex gap-2 justify-end mt-6">
-              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">
+              <button onClick={() => setDeleteConfirm(null)} disabled={deleting} className="px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all disabled:opacity-50">
                 Batal
               </button>
-              <button onClick={() => handleDelete(deleteConfirm)} className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all">
-                Hapus
+              <button onClick={() => handleDelete(deleteConfirm)} disabled={deleting} className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all flex items-center gap-2 disabled:opacity-60">
+                {deleting ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                    Menghapus...
+                  </>
+                ) : 'Hapus'}
               </button>
             </div>
           </div>

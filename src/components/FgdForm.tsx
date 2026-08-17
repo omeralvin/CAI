@@ -41,7 +41,7 @@ interface FgdFormProps {
 }
 
 const emptyForm: FgdFormData = {
-  sessionName: 'Sesi 1',
+  sessionName: '',
   authorName: '',
   usulanPermasalahan: '',
   problem: '',
