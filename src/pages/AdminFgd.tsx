@@ -6,7 +6,7 @@ import { API_BASE_URL } from '../api';
 import { fetchFgdThemes, fgdThemeLabel, fgdThemeLabelFor, getHeaders } from '../utils/fgdThemes';
 import logoWarna from '../../assets/image/logo_warna.png';
 import {
-  Table2, FileEdit, Download, Trash2, Eye,
+  Table2, FileEdit, Download, Trash2, Eye, Printer, X,
   ChevronDown, FileText, CheckCircle, XCircle, AlertTriangle, Monitor, Plus, Settings2
 } from 'lucide-react';
 const GROUPS = Array.from({ length: 15 }, (_, i) => i + 1);
@@ -225,6 +225,7 @@ export const AdminFgd: React.FC = () => {
   const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [fetchError, setFetchError] = useState(false);
+  const [previewData, setPreviewData] = useState<FgdMinute | null>(null);
 
   const loadThemes = async () => {
     const data = await fetchFgdThemes();
@@ -318,7 +319,7 @@ export const AdminFgd: React.FC = () => {
 
   const handlePresent = (data: FgdMinute | null) => {
     if (!data) return;
-    setCurrentPage('admin-fgd-present');
+    setPreviewData(data);
   };
 
   const handleExportAll = () => {
@@ -356,6 +357,53 @@ export const AdminFgd: React.FC = () => {
     }
   };
 
+  const handleExportSession = async (sessionName: string) => {
+    const token = localStorage.getItem('cai_token');
+    if (!token || !sessionName) return;
+    const url = `${API_BASE_URL}/notulis/export-pdf?session=${encodeURIComponent(sessionName)}`;
+    try {
+      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `notulis-sesi-${sessionName.replace(/\s+/g, '-')}.pdf`;
+        a.click();
+      } else {
+        showMessage('error', `Data sesi "${sessionName}" belum diisi`);
+      }
+    } catch {
+      showMessage('error', 'Gagal mengekspor PDF');
+    }
+  };
+
+  const handleExportGroupSession = async (groupNumber?: number, sessionName?: string) => {
+    const token = localStorage.getItem('cai_token');
+    const gn = groupNumber ?? selectedGroup;
+    if (!gn || !sessionName) return;
+    const url = `${API_BASE_URL}/notulis/export-pdf/${gn}?session=${encodeURIComponent(sessionName)}`;
+    try {
+      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `notulis-grup-${gn}-${sessionName.replace(/\s+/g, '-')}.pdf`;
+        a.click();
+      } else {
+        showMessage('error', 'Data belum diisi');
+      }
+    } catch {
+      showMessage('error', 'Gagal mengekspor PDF');
+    }
+  };
+
+  const handlePrintRow = (d: FgdMinute) => {
+    sessionStorage.setItem('fgd_print_group', String(d.groupNumber));
+    sessionStorage.setItem('fgd_print_session', d.sessionName || '');
+    setCurrentPage('admin-fgd-print');
+  };
+
   const tabs: { id: TabId; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'rekap', label: 'Rekap Data', icon: Table2 },
     { id: 'input', label: 'Input / Edit', icon: FileEdit },
@@ -380,13 +428,31 @@ export const AdminFgd: React.FC = () => {
             <button className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer">
               <Download className="h-4 w-4" /> Export PDF <ChevronDown className="h-3 w-3" />
             </button>
-            <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-slate-200 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 overflow-hidden">
-              <button onClick={() => { sessionStorage.removeItem('fgd_print_group'); setCurrentPage('admin-fgd-print'); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors flex items-center gap-2 border-b border-slate-100">
+            <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 overflow-hidden">
+              <button onClick={() => { sessionStorage.removeItem('fgd_print_group'); sessionStorage.removeItem('fgd_print_session'); setCurrentPage('admin-fgd-print'); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors flex items-center gap-2 border-b border-slate-100">
                 <Download className="h-3.5 w-3.5 text-blue-500" /> Export Semua Grup
               </button>
+              {themes.length > 0 && (
+                <>
+                  <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-100">
+                    Per Sesi
+                  </div>
+                  <div className="max-h-36 overflow-y-auto border-b border-slate-100">
+                    {themes.map(t => (
+                      <button key={t.id} onClick={() => handleExportSession(t.name)} className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-blue-50 hover:text-blue-700 transition-colors flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-300" />
+                        {fgdThemeLabel(t)}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-100">
+                Per Grup
+              </div>
               <div className="max-h-48 overflow-y-auto">
                 {GROUPS.map(g => (
-                  <button key={g} onClick={() => { sessionStorage.setItem('fgd_print_group', String(g)); setCurrentPage('admin-fgd-print'); }} className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-2">
+                  <button key={g} onClick={() => { sessionStorage.setItem('fgd_print_group', String(g)); sessionStorage.removeItem('fgd_print_session'); setCurrentPage('admin-fgd-print'); }} className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
                     Grup {g}
                   </button>
@@ -457,13 +523,8 @@ export const AdminFgd: React.FC = () => {
                     <th className="text-left px-4 py-3 font-bold text-slate-600">Grup</th>
                     <th className="text-left px-3 py-3 font-bold text-slate-600">Sesi</th>
                     <th className="text-left px-3 py-3 font-bold text-slate-600">Penulis</th>
-                    <th className="text-left px-3 py-3 font-bold text-slate-600">Usulan Permasalahan</th>
-                    <th className="text-left px-3 py-3 font-bold text-slate-600">Problem</th>
-                    <th className="text-left px-3 py-3 font-bold text-slate-600">Penyebab</th>
-                    <th className="text-left px-3 py-3 font-bold text-slate-600">Solusi</th>
-                    <th className="text-left px-3 py-3 font-bold text-slate-600">Bidang PPG</th>
                     <th className="text-center px-3 py-3 font-bold text-slate-600">Status</th>
-                    <th className="text-center px-3 py-3 font-bold text-slate-600 w-28">Aksi</th>
+                    <th className="text-center px-3 py-3 font-bold text-slate-600 w-32">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -476,7 +537,7 @@ export const AdminFgd: React.FC = () => {
                       return (
                         <tr key={g} className="border-b border-slate-100 bg-slate-50/50">
                           <td className="px-4 py-3 font-bold text-slate-700">Grup {g}</td>
-                          <td className="px-3 py-3 text-slate-400" colSpan={9}>Belum ada data</td>
+                          <td className="px-3 py-3 text-slate-400" colSpan={4}>Belum ada data</td>
                         </tr>
                       );
                     }
@@ -486,11 +547,6 @@ export const AdminFgd: React.FC = () => {
                         <td className="px-4 py-3 font-bold text-slate-700">Grup {g}</td>
                         <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{fgdThemeLabelFor(themes, d.sessionName)}</td>
                         <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{d.authorName || '-'}</td>
-                        <td className="px-3 py-3 text-slate-600 max-w-[180px] truncate">{d.usulanPermasalahan || '-'}</td>
-                        <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d.problem || '-'}</td>
-                        <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d.penyebab || '-'}</td>
-                        <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d.solusi || '-'}</td>
-                        <td className="px-3 py-3 text-slate-600 max-w-[140px] truncate">{d.actionPlanBidangPpg || '-'}</td>
                         <td className="px-3 py-3 text-center">
                           <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] font-semibold">
                             <CheckCircle className="h-3 w-3" /> Terisi
@@ -501,8 +557,11 @@ export const AdminFgd: React.FC = () => {
                             <button onClick={() => handleEdit(d)} className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors" title="Edit">
                               <FileEdit className="h-3.5 w-3.5" />
                             </button>
-                            <button onClick={() => handlePresent(d)} className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-600 transition-colors" title="Presentasi">
+                            <button onClick={() => handlePresent(d)} className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-600 transition-colors" title="Preview">
                               <Eye className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => handlePrintRow(d)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-600 transition-colors" title="Print / Cetak">
+                              <Printer className="h-3.5 w-3.5" />
                             </button>
                             <button onClick={() => setDeleteConfirm(d.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 transition-colors" title="Hapus">
                               <Trash2 className="h-3.5 w-3.5" />
@@ -610,6 +669,71 @@ export const AdminFgd: React.FC = () => {
           onClose={() => setShowThemeModal(false)}
           onChanged={loadThemes}
         />
+      )}
+
+      {/* Preview Modal */}
+      {previewData && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10">
+              <div>
+                <h3 className="font-bold text-slate-800">Preview Notulis — Grup {previewData.groupNumber}</h3>
+                <p className="text-xs text-slate-500">{fgdThemeLabelFor(themes, previewData.sessionName)}{previewData.authorName ? ` | Notulis: ${previewData.authorName}` : ''}</p>
+              </div>
+              <button onClick={() => setPreviewData(null)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {[
+                { title: 'USULAN PERMASALAHAN', fields: [['Usulan Permasalahan', previewData.usulanPermasalahan]] },
+                { title: 'PROBLEM - PENYEBAB - SOLUSI', fields: [
+                  ['Problem', previewData.problem],
+                  ['Penyebab', previewData.penyebab],
+                  ['Solusi', previewData.solusi],
+                ]},
+                { title: 'ACTION PLAN', fields: [
+                  ['Bidang PPG', previewData.actionPlanBidangPpg],
+                  ['Deskripsi', previewData.actionPlanDeskripsi],
+                  ['Nama Kegiatan', previewData.actionPlanNamaKegiatan],
+                  ['Peserta', previewData.actionPlanPeserta],
+                  ['Waktu', previewData.actionPlanWaktu],
+                  ['Dana', previewData.actionPlanDana],
+                ]},
+                { title: 'PERAN 5 UNSUR', fields: [
+                  ['Peran Keimaman', previewData.peranKeimaman],
+                  ['Peran Pengurus', previewData.peranPengurus],
+                  ['Peran Orang Tua', previewData.peranOrangTua],
+                  ['Peran Mubaligh', previewData.peranMubaligh],
+                  ['Peran Ahli Pendidik', previewData.peranAhliPendidik],
+                ]},
+              ].map(section => (
+                <div key={section.title} className="rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="bg-[#2e32a3] text-white font-bold text-[11px] px-4 py-2 uppercase tracking-wide">{section.title}</div>
+                  <div className="p-4 space-y-2">
+                    {section.fields.map(([label, value]) => (
+                      <div key={label}>
+                        <div className="text-[10px] font-bold text-blue-700 uppercase tracking-wide mb-0.5">{label}</div>
+                        <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{value || '-'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-3 flex justify-end gap-2">
+              <button onClick={() => handlePrintRow(previewData)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95 flex items-center gap-1.5">
+                <Printer className="h-3.5 w-3.5" /> Print
+              </button>
+              <button onClick={() => { handleEdit(previewData); setPreviewData(null); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95 flex items-center gap-1.5">
+                <FileEdit className="h-3.5 w-3.5" /> Edit
+              </button>
+              <button onClick={() => setPreviewData(null)} className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete Confirmation Modal */}

@@ -19,6 +19,7 @@ export const AdminFgdPrint: React.FC = () => {
   const [themes, setThemes] = useState<FgdTheme[]>([]);
   const [loading, setLoading] = useState(true);
   const groupFilter = sessionStorage.getItem('fgd_print_group');
+  const sessionFilter = sessionStorage.getItem('fgd_print_session');
 
   useEffect(() => { fetchFgdThemes().then(setThemes); }, []);
 
@@ -26,7 +27,11 @@ export const AdminFgdPrint: React.FC = () => {
     let cancelled = false;
     const load = async (retries = 2) => {
       try {
-        const res = await fetch(`${API_BASE_URL}/notulis${groupFilter ? `?group=${groupFilter}` : ''}`, { headers: getHeaders() });
+        const params = new URLSearchParams();
+        if (groupFilter) params.set('group', groupFilter);
+        if (sessionFilter) params.set('session', sessionFilter);
+        const qs = params.toString();
+        const res = await fetch(`${API_BASE_URL}/notulis${qs ? `?${qs}` : ''}`, { headers: getHeaders() });
         if (res.status === 401) {
           logout();
           return;
@@ -48,7 +53,7 @@ export const AdminFgdPrint: React.FC = () => {
     };
     load();
     return () => { cancelled = true; };
-  }, [groupFilter]);
+  }, [groupFilter, sessionFilter]);
 
   const handlePrint = () => window.print();
 
@@ -77,13 +82,13 @@ export const AdminFgdPrint: React.FC = () => {
       <div className="no-print fixed top-0 left-0 right-0 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between z-50 shadow-sm">
         <div className="flex items-center gap-3">
           <img src={logoWarna} alt="Logo CAI" className="h-8 w-auto" />
-          <span className="text-sm font-bold text-slate-700">Cetak Notulis FGD {groupFilter ? `— Grup ${groupFilter}` : ''} — {allData.length} data</span>
+          <span className="text-sm font-bold text-slate-700">Cetak Notulis FGD {groupFilter ? `— Grup ${groupFilter}` : ''}{sessionFilter ? ` — ${sessionFilter}` : ''} — {allData.length} data</span>
         </div>
         <div className="flex gap-2">
           <button onClick={handlePrint} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-sm active:scale-95">
             Cetak / Simpan PDF
           </button>
-          <button onClick={() => { sessionStorage.removeItem('fgd_print_group'); setCurrentPage('admin-fgd'); }} className="px-5 py-2 bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-xl hover:bg-slate-50 active:scale-95">
+          <button onClick={() => { sessionStorage.removeItem('fgd_print_group'); sessionStorage.removeItem('fgd_print_session'); setCurrentPage('admin-fgd'); }} className="px-5 py-2 bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-xl hover:bg-slate-50 active:scale-95">
             Kembali
           </button>
         </div>
